@@ -84,7 +84,7 @@ dashboardRouter.get(
           where: {
             ...baseWhere,
             resolvedAt: {
-              gte: addUtcDays(startOfUtcDay(now), -days),
+              gte: addUtcDays(startOfUtcDay(now), -(days - 1)),
             },
           },
           select: { resolvedAt: true },
