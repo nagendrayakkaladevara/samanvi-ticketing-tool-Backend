@@ -16,8 +16,12 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
     return;
   }
 
-  req.user = verifyAccessToken(token);
-  next();
+  try {
+    req.user = verifyAccessToken(token);
+    next();
+  } catch (error) {
+    next(error);
+  }
 };
 
 export function requireFeature(feature: Feature): RequestHandler {

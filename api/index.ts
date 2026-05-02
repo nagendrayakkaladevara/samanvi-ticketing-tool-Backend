@@ -1,3 +1,4 @@
+import type { Request, Response } from "express";
 import { createApp } from "../src/app";
 import { connectDatabase } from "../src/config/database";
 import { logger } from "../src/config/logger";
@@ -19,15 +20,13 @@ function ensureDatabaseConnection(): Promise<void> {
   return globalForVercel.dbConnectionPromise;
 }
 
-export default async function handler(req: unknown, res: unknown) {
+export default async function handler(req: Request, res: Response) {
   try {
     await ensureDatabaseConnection();
-    return app(req as never, res as never);
+    return app(req, res);
   } catch (error) {
     logger.error({ err: error }, "Vercel request failed");
-
-    const response = res as { status: (code: number) => { json: (body: unknown) => void } };
-    response.status(500).json({
+    res.status(500).json({
       success: false,
       error: {
         code: "INTERNAL_SERVER_ERROR",
