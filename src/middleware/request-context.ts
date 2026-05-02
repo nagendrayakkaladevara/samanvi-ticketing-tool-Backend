@@ -20,12 +20,7 @@ const httpLogger = pinoHttp({
 });
 
 export const requestContextMiddleware: RequestHandler = (req, res, next) => {
-  httpLogger(req, res, (err) => {
-    if (err) {
-      next(err);
-      return;
-    }
-
+  httpLogger(req, res, () => {
     req.requestId = String(req.id);
     res.setHeader("x-request-id", req.requestId);
     next();
