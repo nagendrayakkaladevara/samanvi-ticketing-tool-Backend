@@ -85,16 +85,14 @@ const ticketActivityLogSelect = {
 } satisfies Prisma.TicketActivityLogSelect;
 
 function recalculateSlaDueAt({
-  createdAt,
-  currentSlaDueAt,
+  slaDurationMs,
   reopenedAt,
 }: {
-  createdAt: Date;
-  currentSlaDueAt: Date;
+  slaDurationMs: bigint;
   reopenedAt: Date;
 }): Date {
-  const slaDurationMs = Math.max(currentSlaDueAt.getTime() - createdAt.getTime(), 0);
-  return new Date(reopenedAt.getTime() + slaDurationMs);
+  const dueEpochMs = BigInt(reopenedAt.getTime()) + slaDurationMs;
+  return new Date(Number(dueEpochMs));
 }
 
 const ticketSelect = {
@@ -249,6 +247,7 @@ ticketsRouter.post(
     const actorUserId = req.user.sub;
 
     const ticket = await prisma.$transaction(async (tx) => {
+      const slaDueAt = new Date(parsedBody.data.slaDueAt);
       const createdTicket = await tx.ticket.create({
         data: {
           title: parsedBody.data.title,
@@ -257,11 +256,20 @@ ticketsRouter.post(
           priority: parsedBody.data.priority,
           categoryId: parsedBody.data.categoryId,
           busId: parsedBody.data.busId,
-          slaDueAt: new Date(parsedBody.data.slaDueAt),
+          slaDueAt,
+          slaDurationMs: 0n,
           createdById: actorUserId,
           status: TicketStatus.created,
         },
-        select: { id: true },
+        select: { id: true, createdAt: true },
+      });
+
+      const slaDurationMs = BigInt(
+        Math.max(slaDueAt.getTime() - createdTicket.createdAt.getTime(), 0),
+      );
+      await tx.ticket.update({
+        where: { id: createdTicket.id },
+        data: { slaDurationMs },
       });
 
       await tx.ticketActivityLog.create({
@@ -600,6 +608,7 @@ ticketsRouter.post(
         status: true,
         createdAt: true,
         slaDueAt: true,
+        slaDurationMs: true,
         assignedToId: true,
         reopenedCount: true,
       },
@@ -621,9 +630,14 @@ ticketsRouter.post(
     }
 
     const reopenedAt = new Date();
+    const slaDurationMs =
+      ticket.slaDurationMs > 0n
+        ? ticket.slaDurationMs
+        : BigInt(
+            Math.max(ticket.slaDueAt.getTime() - ticket.createdAt.getTime(), 0),
+          );
     const recalculatedSlaDueAt = recalculateSlaDueAt({
-      createdAt: ticket.createdAt,
-      currentSlaDueAt: ticket.slaDueAt,
+      slaDurationMs,
       reopenedAt,
     });
 
@@ -636,6 +650,7 @@ ticketsRouter.post(
           resolvedAt: null,
           closedAt: null,
           slaDueAt: recalculatedSlaDueAt,
+          ...(ticket.slaDurationMs === 0n ? { slaDurationMs } : {}),
         },
       }),
       prisma.ticketActivityLog.create({
