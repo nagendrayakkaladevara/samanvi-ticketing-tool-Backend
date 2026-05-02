@@ -165,7 +165,7 @@ usersRouter.post(
       const user = await prisma.user.create({
         data: {
           username: parsedBody.data.username,
-          passwordHash: hashPassword(parsedBody.data.password),
+          passwordHash: await hashPassword(parsedBody.data.password),
           displayName: parsedBody.data.displayName,
           email: parsedBody.data.email,
           isActive: parsedBody.data.isActive ?? true,
@@ -237,7 +237,7 @@ usersRouter.patch(
             ? { username: parsedBody.data.username }
             : {}),
           ...(parsedBody.data.password !== undefined
-            ? { passwordHash: hashPassword(parsedBody.data.password) }
+            ? { passwordHash: await hashPassword(parsedBody.data.password) }
             : {}),
           ...(parsedBody.data.displayName !== undefined
             ? { displayName: parsedBody.data.displayName }

@@ -46,7 +46,7 @@ export async function authenticateUser(
     return null;
   }
 
-  if (!verifyPassword(password, user.passwordHash)) {
+  if (!(await verifyPassword(password, user.passwordHash))) {
     return null;
   }
 

@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { createHash } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, RoleCode } from "@prisma/client";
 import { Pool } from "pg";
+import { hashPassword } from "../src/auth/password";
 
 const connectionString = process.env["DATABASE_URL"];
 
@@ -17,10 +17,6 @@ const adapter = new PrismaPg(
 );
 
 const prisma = new PrismaClient({ adapter });
-
-function hashPassword(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
 
 async function main() {
   const roles: Array<{ code: RoleCode; label: string }> = [
@@ -77,17 +73,19 @@ async function main() {
       throw new Error(`Missing role id for code ${user.roleCode}`);
     }
 
+    const passwordHash = await hashPassword(user.password);
+
     await prisma.user.upsert({
       where: { username: user.username },
       update: {
         displayName: user.displayName,
         roleId,
         isActive: true,
-        passwordHash: hashPassword(user.password),
+        passwordHash,
       },
       create: {
         username: user.username,
-        passwordHash: hashPassword(user.password),
+        passwordHash,
         displayName: user.displayName,
         roleId,
       },
