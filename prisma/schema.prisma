@@ -107,6 +107,8 @@ model Ticket {
   assignedBy     User?         @relation("TicketAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
   assignedAt     DateTime?
   slaDueAt       DateTime
+  /** Milliseconds from ticket creation to original SLA deadline; fixed at create for correct reopen SLA. */
+  slaDurationMs  BigInt       @default(0)
   resolvedAt     DateTime?
   closedAt       DateTime?
   reopenedCount  Int           @default(0)
