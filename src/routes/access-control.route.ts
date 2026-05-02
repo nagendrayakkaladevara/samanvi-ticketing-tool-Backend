@@ -6,19 +6,6 @@ const accessControlRouter = Router();
 accessControlRouter.use(requireAuth);
 
 accessControlRouter.post(
-  "/tickets",
-  requireFeature("create_ticket"),
-  (_req, res) => {
-    res.status(200).json({
-      success: true,
-      data: {
-        message: "Allowed to create ticket",
-      },
-    });
-  },
-);
-
-accessControlRouter.post(
   "/tickets/:ticketId/assign",
   requireFeature("assign_ticket"),
   (req, res) => {
@@ -46,24 +33,33 @@ accessControlRouter.patch(
   },
 );
 
-accessControlRouter.get(
-  "/dashboard",
-  requireFeature("view_dashboard"),
-  (_req, res) => {
-    res.status(200).json({
-      success: true,
-      data: {
-        message: "Allowed to view dashboard",
-      },
-    });
-  },
-);
-
 accessControlRouter.post("/users", requireFeature("manage_users"), (_req, res) => {
   res.status(200).json({
     success: true,
     data: {
       message: "Allowed to manage users",
+    },
+  });
+});
+
+accessControlRouter.post(
+  "/issue-categories",
+  requireFeature("manage_categories"),
+  (_req, res) => {
+    res.status(200).json({
+      success: true,
+      data: {
+        message: "Allowed to manage issue categories",
+      },
+    });
+  },
+);
+
+accessControlRouter.post("/buses", requireFeature("manage_buses"), (_req, res) => {
+  res.status(200).json({
+    success: true,
+    data: {
+      message: "Allowed to manage buses",
     },
   });
 });

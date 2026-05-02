@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { createHash } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, RoleCode } from "@prisma/client";
 import { Pool } from "pg";
@@ -16,6 +17,10 @@ const adapter = new PrismaPg(
 );
 
 const prisma = new PrismaClient({ adapter });
+
+function hashPassword(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 async function main() {
   const roles: Array<{ code: RoleCode; label: string }> = [
@@ -35,7 +40,82 @@ async function main() {
     });
   }
 
+  const roleRows = await prisma.role.findMany({
+    where: {
+      code: {
+        in: [RoleCode.admin, RoleCode.supervisor, RoleCode.worker],
+      },
+    },
+    select: { id: true, code: true },
+  });
+  const roleIdByCode = new Map(roleRows.map((row) => [row.code, row.id]));
+
+  const defaultUsers = [
+    {
+      username: "admin",
+      password: "admin123",
+      displayName: "Admin User",
+      roleCode: RoleCode.admin,
+    },
+    {
+      username: "supervisor",
+      password: "supervisor123",
+      displayName: "Supervisor User",
+      roleCode: RoleCode.supervisor,
+    },
+    {
+      username: "worker",
+      password: "worker123",
+      displayName: "Worker User",
+      roleCode: RoleCode.worker,
+    },
+  ] as const;
+
+  for (const user of defaultUsers) {
+    const roleId = roleIdByCode.get(user.roleCode);
+    if (!roleId) {
+      throw new Error(`Missing role id for code ${user.roleCode}`);
+    }
+
+    await prisma.user.upsert({
+      where: { username: user.username },
+      update: {
+        displayName: user.displayName,
+        roleId,
+        isActive: true,
+        passwordHash: hashPassword(user.password),
+      },
+      create: {
+        username: user.username,
+        passwordHash: hashPassword(user.password),
+        displayName: user.displayName,
+        roleId,
+      },
+    });
+  }
+
+  const defaultCategories = [
+    "Engine",
+    "Electrical",
+    "Body Damage",
+    "Tires",
+    "Interior",
+    "Other",
+  ] as const;
+
+  for (const categoryName of defaultCategories) {
+    await prisma.issueCategory.upsert({
+      where: { name: categoryName },
+      update: { isActive: true },
+      create: {
+        name: categoryName,
+      },
+    });
+  }
+
   console.log("Seeded default roles:", roles.map((role) => role.code).join(", "));
+  console.log("Seeded default users:", defaultUsers.map((user) => user.username).join(", "));
+  console.log("Seeded default issue categories:", defaultCategories.join(", "));
 }
 
 main()

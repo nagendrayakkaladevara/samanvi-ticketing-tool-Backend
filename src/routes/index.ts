@@ -3,14 +3,26 @@ import { env } from "../config/env";
 import { apiRateLimiter } from "../middleware/rate-limit";
 import { accessControlRouter } from "./access-control.route";
 import { authRouter } from "./auth.route";
+import { busesRouter } from "./buses.route";
+import { dashboardRouter } from "./dashboard.route";
 import { maybeDocsRouter } from "./docs.route";
 import { healthRouter } from "./health.route";
+import { issueCategoriesRouter } from "./issue-categories.route";
+import { successMetricsRouter } from "./success-metrics.route";
+import { ticketsRouter } from "./tickets.route";
+import { usersRouter } from "./users.route";
 
 const apiRouter = Router();
 
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/auth", authRouter);
 apiRouter.use(maybeDocsRouter());
+apiRouter.use(issueCategoriesRouter);
+apiRouter.use(busesRouter);
+apiRouter.use(usersRouter);
+apiRouter.use(ticketsRouter);
+apiRouter.use(dashboardRouter);
+apiRouter.use(successMetricsRouter);
 apiRouter.use(accessControlRouter);
 
 const rootRouter = Router();
