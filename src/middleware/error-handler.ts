@@ -12,15 +12,19 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
           isOperational: false,
         });
 
-  req.log.error(
-    {
-      err,
-      requestId: req.requestId,
-      code: appError.code,
-      isOperational: appError.isOperational,
-    },
-    "Request failed",
-  );
+  const requestId = req.requestId;
+  const logPayload = {
+    err,
+    requestId,
+    code: appError.code,
+    isOperational: appError.isOperational,
+  };
+
+  if (req.log) {
+    req.log.error(logPayload, "Request failed");
+  } else {
+    console.error("Request failed", logPayload);
+  }
 
   const response = {
     success: false,
@@ -29,7 +33,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
       message: appError.message,
       details: appError.details,
     },
-    requestId: req.requestId,
+    requestId,
   };
 
   res.status(appError.statusCode).json(response);
