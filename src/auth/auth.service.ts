@@ -1,6 +1,9 @@
+import type { RoleCode as PrismaRoleCode } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { unauthorized } from "../core/errors/http-errors";
+import { prisma } from "../lib/prisma";
+import { verifyPassword } from "./password";
 import { getRoleLabel, type RoleCode } from "./roles";
 
 export interface AuthUser {
@@ -11,10 +14,6 @@ export interface AuthUser {
   displayName: string;
 }
 
-interface AuthUserWithPassword extends AuthUser {
-  password: string;
-}
-
 export interface AccessTokenPayload {
   sub: string;
   username: string;
@@ -23,46 +22,41 @@ export interface AccessTokenPayload {
   displayName: string;
 }
 
-const demoUsers: AuthUserWithPassword[] = [
-  {
-    id: "usr-admin-1",
-    username: "admin",
-    password: "admin123",
-    roleCode: "admin",
-    roleLabel: "Admin",
-    displayName: "Admin User",
-  },
-  {
-    id: "usr-supervisor-1",
-    username: "supervisor",
-    password: "supervisor123",
-    roleCode: "supervisor",
-    roleLabel: "Supervisor",
-    displayName: "Supervisor User",
-  },
-  {
-    id: "usr-worker-1",
-    username: "worker",
-    password: "worker123",
-    roleCode: "worker",
-    roleLabel: "Worker",
-    displayName: "Worker User",
-  },
-];
+function toRoleCode(roleCode: PrismaRoleCode): RoleCode {
+  return roleCode;
+}
 
-export function authenticateDemoUser(
+export async function authenticateUser(
   username: string,
   password: string,
-): AuthUser | null {
-  const user = demoUsers.find(
-    (u) => u.username === username && u.password === password,
-  );
-  if (!user) return null;
+): Promise<AuthUser | null> {
+  const user = await prisma.user.findUnique({
+    where: { username },
+    include: {
+      role: {
+        select: {
+          code: true,
+          label: true,
+        },
+      },
+    },
+  });
+
+  if (!user || !user.isActive) {
+    return null;
+  }
+
+  if (!(await verifyPassword(password, user.passwordHash))) {
+    return null;
+  }
+
+  const roleCode = toRoleCode(user.role.code);
+
   return {
     id: user.id,
     username: user.username,
-    roleCode: user.roleCode,
-    roleLabel: user.roleLabel ?? getRoleLabel(user.roleCode),
+    roleCode,
+    roleLabel: user.role.label ?? getRoleLabel(roleCode),
     displayName: user.displayName,
   };
 }

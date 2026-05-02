@@ -30,52 +30,52 @@ Ordered execution from the current foundation (auth, schema, stubs) toward a PRD
 
 ## Phase 3A — Ticket creation and retrieval
 
-- [ ] Create ticket endpoint (Supervisor and Admin only)
-- [ ] Enforce required fields: severity, priority, category, bus, SLA due time
-- [ ] Ticket list and detail endpoints with role-aware filtering
-- [ ] Unassigned tickets visible in supervisor/admin views (PRD section 13)
+- [x] Create ticket endpoint (Supervisor and Admin only)
+- [x] Enforce required fields: severity, priority, category, bus, SLA due time
+- [x] Ticket list and detail endpoints with role-aware filtering
+- [x] Unassigned tickets visible in supervisor/admin views (PRD section 13)
 
 ---
 
 ## Phase 3B — Assignment and worker workflow
 
-- [ ] Assign ticket endpoint (Supervisor and Admin)
-- [ ] Worker “my tickets” (assigned) list endpoint
-- [ ] Status update endpoint for worker/admin lifecycle (`assigned` → `in_progress` → `resolved` → `closed`)
-- [ ] Resolution notes / comments support
+- [x] Assign ticket endpoint (Supervisor and Admin)
+- [x] Worker “my tickets” (assigned) list endpoint
+- [x] Status update endpoint for worker/admin lifecycle (`assigned` → `in_progress` → `resolved` → `closed`)
+- [x] Resolution notes / comments support
 
 ---
 
 ## Phase 3C — Reopen flow
 
-- [ ] Reopen endpoint and valid transition rules
-- [ ] SLA recalculation on reopen (PRD section 13)
-- [ ] Track reopen count and resolution/close timestamps consistently
+- [x] Reopen endpoint and valid transition rules
+- [x] SLA recalculation on reopen (PRD section 13)
+- [x] Track reopen count and resolution/close timestamps consistently
 
 ---
 
 ## Phase 4 — Audit trail and history
 
-- [ ] Write activity logs on create, assign, status change, comment, reopen, close
-- [ ] Persist created by, assigned by, from/to status, timestamps, notes
-- [ ] Ticket timeline endpoint (or equivalent) for activity history
+- [x] Write activity logs on create, assign, status change, comment, reopen, close
+- [x] Persist created by, assigned by, from/to status, timestamps, notes
+- [x] Ticket timeline endpoint (or equivalent) for activity history
 
 ---
 
 ## Phase 5A — SLA and overdue
 
-- [ ] Overdue rule: current time is after SLA due time and status is not closed (PRD section 6.2)
-- [ ] Expose overdue duration where useful (PRD section 6.3)
-- [ ] Reject creates/updates that omit required SLA (PRD section 13)
+- [x] Overdue rule: current time is after SLA due time and status is not closed (PRD section 6.2)
+- [x] Expose overdue duration where useful (PRD section 6.3)
+- [x] Reject creates/updates that omit required SLA (PRD section 13)
 
 ---
 
 ## Phase 5B — Bus history and dashboards
 
-- [ ] Bus history: past tickets per bus; status and resolution timelines (PRD section 8.1)
-- [ ] Ticket metrics: totals, by status, overdue, completed, resolved per day, average resolution time (PRD section 9.1)
-- [ ] Worker metrics: assigned per worker, resolved per worker (PRD section 9.2)
-- [ ] Bus metrics: issues per bus, most problematic buses (PRD section 9.3)
+- [x] Bus history: past tickets per bus; status and resolution timelines (PRD section 8.1)
+- [x] Ticket metrics: totals, by status, overdue, completed, resolved per day, average resolution time (PRD section 9.1)
+- [x] Worker metrics: assigned per worker, resolved per worker (PRD section 9.2)
+- [x] Bus metrics: issues per bus, most problematic buses (PRD section 9.3)
 
 ---
 
@@ -90,10 +90,10 @@ Ordered execution from the current foundation (auth, schema, stubs) toward a PRD
 
 ## Phase 7 — Success metrics (PRD section 14)
 
-- [ ] % of tickets resolved within SLA
-- [ ] Average resolution time (reporting-grade)
-- [ ] Repeated issues per bus (define rule, e.g. same bus + category or title pattern)
-- [ ] Worker efficiency (e.g. tickets per day)
+- [x] % of tickets resolved within SLA
+- [x] Average resolution time (reporting-grade)
+- [x] Repeated issues per bus (define rule, e.g. same bus + category or title pattern)
+- [x] Worker efficiency (e.g. tickets per day)
 
 ---
 
@@ -114,4 +114,4 @@ Use these if you prefer shipping in vertical slices.
 ## Notes
 
 - **Rationale:** Masters and users exist before ticket creation; assignment and worker flows before SLA dashboards; metrics are read models over stable ticket and audit data.
-- **Current repo state:** Prisma models cover much of the domain; HTTP handlers for real CRUD and reporting are still to be implemented—use this checklist to track that work.
+- **Current repo state:** Core ticket CRUD, dashboards, bus history, and PRD §14 success metrics (`GET /metrics/success`) are implemented; Phases 1–2 and 6 remain—use this checklist to track gaps.

@@ -3,6 +3,24 @@ import { env } from "./env";
 import { prisma } from "../lib/prisma";
 import { logger } from "./logger";
 
+const globalForVercel = globalThis as unknown as {
+  dbConnectionPromise?: Promise<void>;
+};
+
+/**
+ * Idempotent DB connect for serverless (reuse one promise per isolate).
+ * Use from Vercel middleware; local server uses {@link connectDatabase} at startup.
+ */
+export function ensureDatabaseConnection(): Promise<void> {
+  if (!globalForVercel.dbConnectionPromise) {
+    globalForVercel.dbConnectionPromise = connectDatabase().catch((error) => {
+      globalForVercel.dbConnectionPromise = undefined;
+      throw error;
+    });
+  }
+  return globalForVercel.dbConnectionPromise;
+}
+
 export async function connectDatabase(): Promise<void> {
   const parsedUrl = new URL(env.databaseUrl);
   await prisma.$connect();

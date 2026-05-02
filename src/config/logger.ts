@@ -1,7 +1,9 @@
 import pino from "pino";
 import { env } from "./env";
 
-const isProduction = env.nodeEnv === "production";
+/** pino-pretty is dev-only and is not bundled on Vercel; loading it crashes the worker. */
+const usePrettyTransport =
+  env.nodeEnv === "development" && process.env["VERCEL"] !== "1";
 
 export const logger = pino({
   level: env.logLevel,
@@ -21,14 +23,14 @@ export const logger = pino({
     ],
     censor: "[REDACTED]",
   },
-  transport: isProduction
-    ? undefined
-    : {
+  transport: usePrettyTransport
+    ? {
         target: "pino-pretty",
         options: {
           colorize: true,
           singleLine: true,
           translateTime: "SYS:standard",
         },
-      },
+      }
+    : undefined,
 });
