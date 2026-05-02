@@ -1,30 +1,50 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
-import morgan from "morgan";
+import { env } from "./config/env";
+import { logger } from "./config/logger";
+import { errorHandler } from "./middleware/error-handler";
+import { notFoundMiddleware } from "./middleware/not-found";
+import { requestContextMiddleware } from "./middleware/request-context";
+import { rootRouter } from "./routes";
 
 export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
-  app.use(helmet());
-  app.use(cors());
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: false,
+    }),
+  );
+  app.use(
+    cors({
+      origin: env.corsOrigin === "*" ? true : env.corsOrigin,
+      credentials: true,
+    }),
+  );
+  app.use(requestContextMiddleware);
   app.use(express.json({ limit: "1mb" }));
-  app.use(morgan("dev"));
+  app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
-  app.get("/health", (_req, res) => {
-    res.status(200).json({ ok: true });
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      success: true,
+      data: {
+        service: "ticketing-api",
+        env: env.nodeEnv,
+      },
+    });
   });
 
-  app.use((_req, res) => {
-    res.status(404).json({ error: "Not Found" });
-  });
+  app.use(rootRouter);
+  app.use(notFoundMiddleware);
+  app.use(errorHandler);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    const message = err instanceof Error ? err.message : "Unexpected error";
-    res.status(500).json({ error: message });
-  });
+  logger.info(
+    { env: env.nodeEnv, prefix: env.apiPrefix },
+    "Application middleware initialized",
+  );
 
   return app;
 }

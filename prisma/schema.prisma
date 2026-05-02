@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleCode {
+  admin
+  supervisor
+  worker
+}
+
+enum TicketStatus {
+  created
+  assigned
+  in_progress
+  resolved
+  closed
+  reopened
+}
+
+enum TicketSeverity {
+  critical
+  high
+  medium
+  low
+}
+
+enum TicketPriority {
+  p1
+  p2
+  p3
+}
+
+enum TicketActivityType {
+  created
+  assigned
+  status_changed
+  commented
+  reopened
+  closed
+}
+
+model Role {
+  id        String    @id @default(cuid())
+  code      RoleCode  @unique
+  label     String    @db.VarChar(50)
+  users     User[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model User {
+  id                 String                @id @default(cuid())
+  username           String                @unique @db.VarChar(50)
+  passwordHash       String                @db.VarChar(255)
+  displayName        String                @db.VarChar(100)
+  email              String?               @unique @db.VarChar(150)
+  isActive           Boolean               @default(true)
+  roleId             String
+  role               Role                  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdTickets     Ticket[]              @relation("TicketCreatedBy")
+  assignedTickets    Ticket[]              @relation("TicketAssignedTo")
+  assignmentActions  Ticket[]              @relation("TicketAssignedBy")
+  activityLogs       TicketActivityLog[]
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+}
+
+model Bus {
+  id                  String   @id @default(cuid())
+  busNumber           String   @unique @db.VarChar(50)
+  lastMaintenanceDate DateTime?
+  tickets             Ticket[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model IssueCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.VarChar(80)
+  isActive  Boolean  @default(true)
+  tickets   Ticket[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ticket {
+  id             String        @id @default(cuid())
+  title          String        @db.VarChar(160)
+  description    String
+  status         TicketStatus  @default(created)
+  severity       TicketSeverity
+  priority       TicketPriority
+  busId          String
+  bus            Bus           @relation(fields: [busId], references: [id], onDelete: Restrict)
+  categoryId     String
+  category       IssueCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdById    String
+  createdBy      User          @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedToId   String?
+  assignedTo     User?         @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedById   String?
+  assignedBy     User?         @relation("TicketAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  assignedAt     DateTime?
+  slaDueAt       DateTime
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+  reopenedCount  Int           @default(0)
+  activityLogs   TicketActivityLog[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([slaDueAt])
+  @@index([busId])
+}
+
+model TicketActivityLog {
+  id          String             @id @default(cuid())
+  ticketId    String
+  ticket      Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorUserId String
+  actor       User               @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  actionType  TicketActivityType
+  fromStatus  TicketStatus?
+  toStatus    TicketStatus?
+  note        String?
+  createdAt   DateTime           @default(now())
+
+  @@index([ticketId, createdAt])
+}

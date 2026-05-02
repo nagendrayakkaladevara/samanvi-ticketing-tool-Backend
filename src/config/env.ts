@@ -1,17 +1,47 @@
 import dotenv from "dotenv";
+import { z } from "zod";
 
 dotenv.config();
 
-function getEnv(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
-  if (value === undefined) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
-  return value;
+const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  LOG_LEVEL: z
+    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+    .default("info"),
+  API_PREFIX: z.string().trim().min(1).default("/api/v1"),
+  CORS_ORIGIN: z.string().trim().default("*"),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60_000),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(300),
+  SWAGGER_ENABLED: z.coerce.boolean().default(true),
+  JWT_SECRET: z.string().trim().min(32),
+  JWT_EXPIRES_IN: z.string().trim().min(1).default("1d"),
+  DATABASE_URL: z.string().trim().url(),
+});
+
+const parsedEnv = envSchema.safeParse(process.env);
+
+if (!parsedEnv.success) {
+  const issues = parsedEnv.error.issues
+    .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
+    .join("; ");
+
+  throw new Error(`Invalid environment configuration: ${issues}`);
 }
 
 export const env = {
-  nodeEnv: getEnv("NODE_ENV", "development"),
-  port: Number(getEnv("PORT", "4000")),
-};
+  nodeEnv: parsedEnv.data.NODE_ENV,
+  port: parsedEnv.data.PORT,
+  logLevel: parsedEnv.data.LOG_LEVEL,
+  apiPrefix: parsedEnv.data.API_PREFIX,
+  corsOrigin: parsedEnv.data.CORS_ORIGIN,
+  rateLimitWindowMs: parsedEnv.data.RATE_LIMIT_WINDOW_MS,
+  rateLimitMax: parsedEnv.data.RATE_LIMIT_MAX,
+  swaggerEnabled: parsedEnv.data.SWAGGER_ENABLED,
+  jwtSecret: parsedEnv.data.JWT_SECRET,
+  jwtExpiresIn: parsedEnv.data.JWT_EXPIRES_IN,
+  databaseUrl: parsedEnv.data.DATABASE_URL,
+} as const;
+
+export type Env = typeof env;
 
