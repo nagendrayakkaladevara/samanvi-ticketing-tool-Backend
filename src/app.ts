@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
+import { ensureDatabaseConnection } from "./config/database";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { errorHandler } from "./middleware/error-handler";
@@ -30,6 +31,17 @@ export function createApp() {
   app.use(requestContextMiddleware);
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+  if (process.env["VERCEL"] === "1") {
+    app.use(async (_req, _res, next) => {
+      try {
+        await ensureDatabaseConnection();
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  }
 
   app.get("/", (_req, res) => {
     res.status(200).json({
