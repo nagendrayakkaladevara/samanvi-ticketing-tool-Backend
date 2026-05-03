@@ -22,7 +22,7 @@ const createTicketSchema = z.object({
   severity: z.nativeEnum(TicketSeverity),
   priority: z.nativeEnum(TicketPriority),
   categoryId: z.string().trim().min(1),
-  busId: z.string().trim().min(1),
+  busNumber: z.string().trim().min(1).max(50),
   slaDueAt: isoDateStringSchema,
 });
 
@@ -45,6 +45,7 @@ const updateTicketStatusSchema = z.object({
   status: z.enum([
     TicketStatus.assigned,
     TicketStatus.in_progress,
+    TicketStatus.blocked,
     TicketStatus.resolved,
     TicketStatus.closed,
   ]),
@@ -61,11 +62,12 @@ const reopenTicketSchema = z.object({
 
 const allowedStatusTransitions: Record<TicketStatus, readonly TicketStatus[]> = {
   [TicketStatus.created]: [TicketStatus.assigned],
-  [TicketStatus.assigned]: [TicketStatus.in_progress],
-  [TicketStatus.in_progress]: [TicketStatus.resolved],
+  [TicketStatus.assigned]: [TicketStatus.in_progress, TicketStatus.blocked],
+  [TicketStatus.in_progress]: [TicketStatus.resolved, TicketStatus.blocked],
+  [TicketStatus.blocked]: [TicketStatus.assigned, TicketStatus.in_progress],
   [TicketStatus.resolved]: [TicketStatus.closed],
   [TicketStatus.closed]: [],
-  [TicketStatus.reopened]: [TicketStatus.assigned, TicketStatus.in_progress],
+  [TicketStatus.reopened]: [TicketStatus.assigned, TicketStatus.in_progress, TicketStatus.blocked],
 };
 
 const ticketActivityLogSelect = {
@@ -208,6 +210,41 @@ function toTicketListWithOverdue(
   return tickets.map((ticket) => toTicketWithOverdue(ticket, now));
 }
 
+async function resolveBusIdForTicketCreation(
+  tx: Prisma.TransactionClient,
+  busNumberInput: string,
+): Promise<string> {
+  const normalized = busNumberInput.trim().toLowerCase();
+  const existing = await tx.bus.findFirst({
+    where: {
+      busNumber: { equals: normalized, mode: "insensitive" },
+    },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+  try {
+    const created = await tx.bus.create({
+      data: { busNumber: normalized },
+      select: { id: true },
+    });
+    return created.id;
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const afterConflict = await tx.bus.findFirst({
+        where: {
+          busNumber: { equals: normalized, mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      if (afterConflict) return afterConflict.id;
+    }
+    throw error;
+  }
+}
+
 ticketsRouter.post(
   "/tickets",
   requireFeature("create_ticket"),
@@ -223,20 +260,11 @@ ticketsRouter.post(
       });
     }
 
-    const [bus, category] = await Promise.all([
-      prisma.bus.findUnique({
-        where: { id: parsedBody.data.busId },
-        select: { id: true },
-      }),
-      prisma.issueCategory.findUnique({
-        where: { id: parsedBody.data.categoryId },
-        select: { id: true, isActive: true },
-      }),
-    ]);
+    const category = await prisma.issueCategory.findUnique({
+      where: { id: parsedBody.data.categoryId },
+      select: { id: true, isActive: true },
+    });
 
-    if (!bus) {
-      throw badRequest("Bus not found");
-    }
     if (!category) {
       throw badRequest("Issue category not found");
     }
@@ -247,6 +275,10 @@ ticketsRouter.post(
     const actorUserId = req.user.sub;
 
     const ticket = await prisma.$transaction(async (tx) => {
+      const busId = await resolveBusIdForTicketCreation(
+        tx,
+        parsedBody.data.busNumber,
+      );
       const slaDueAt = new Date(parsedBody.data.slaDueAt);
       const createdTicket = await tx.ticket.create({
         data: {
@@ -255,7 +287,7 @@ ticketsRouter.post(
           severity: parsedBody.data.severity,
           priority: parsedBody.data.priority,
           categoryId: parsedBody.data.categoryId,
-          busId: parsedBody.data.busId,
+          busId,
           slaDueAt,
           slaDurationMs: 0n,
           createdById: actorUserId,
@@ -355,11 +387,27 @@ ticketsRouter.get(
       throw forbidden("Only workers can access assigned my tickets view");
     }
 
+    const parsedQuery = ticketListQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      throw badRequest("Invalid tickets query params", {
+        issues: parsedQuery.error.issues,
+      });
+    }
+
+    const where: Prisma.TicketWhereInput = {
+      assignedToId: req.user.sub,
+      ...(parsedQuery.data.status ? { status: parsedQuery.data.status } : {}),
+      ...(parsedQuery.data.severity ? { severity: parsedQuery.data.severity } : {}),
+      ...(parsedQuery.data.priority ? { priority: parsedQuery.data.priority } : {}),
+      ...(parsedQuery.data.categoryId
+        ? { categoryId: parsedQuery.data.categoryId }
+        : {}),
+      ...(parsedQuery.data.busId ? { busId: parsedQuery.data.busId } : {}),
+    };
+
     const tickets = await prisma.ticket.findMany({
-      where: {
-        assignedToId: req.user.sub,
-      },
-      orderBy: [{ updatedAt: "desc" }],
+      where,
+      orderBy: [{ createdAt: "desc" }],
       select: ticketSelect,
     });
 
@@ -546,6 +594,10 @@ ticketsRouter.patch(
       throw badRequest("Resolution note is required when resolving a ticket");
     }
 
+    if (parsedBody.data.status === TicketStatus.blocked && !parsedBody.data.note) {
+      throw badRequest("A note is required when marking a ticket as blocked");
+    }
+
     const now = new Date();
     await prisma.$transaction([
       prisma.ticket.update({
@@ -703,6 +755,34 @@ ticketsRouter.post(
     res.status(201).json({
       success: true,
       data: comment,
+    });
+  }),
+);
+
+ticketsRouter.delete(
+  "/tickets/:ticketId",
+  asyncHandler(async (req, res) => {
+    if (!req.user) {
+      throw badRequest("Authenticated user context is required");
+    }
+    if (req.user.roleCode !== RoleCode.admin) {
+      throw forbidden("Only administrators can delete tickets");
+    }
+
+    const ticketId = assertTicketId(req.params.ticketId);
+    const existing = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw notFound("Ticket not found");
+    }
+
+    await prisma.ticket.delete({ where: { id: ticketId } });
+
+    res.status(200).json({
+      success: true,
+      data: { id: ticketId },
     });
   }),
 );

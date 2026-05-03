@@ -79,10 +79,12 @@ const userSelect = {
 
 const usersRouter = Router();
 
-usersRouter.use(requireAuth, requireFeature("manage_users"));
+/** Auth only here — `manage_users` must be per-route or it runs for unrelated paths (e.g. `/tickets/my`). */
+usersRouter.use(requireAuth);
 
 usersRouter.get(
   "/users",
+  requireFeature("manage_users"),
   asyncHandler(async (req, res) => {
     const parsedQuery = userListQuerySchema.safeParse(req.query);
     if (!parsedQuery.success) {
@@ -115,6 +117,7 @@ usersRouter.get(
 
 usersRouter.get(
   "/users/:userId",
+  requireFeature("manage_users"),
   asyncHandler(async (req, res) => {
     const userId = req.params.userId;
     if (!userId || Array.isArray(userId)) {
@@ -144,6 +147,7 @@ usersRouter.get(
 
 usersRouter.post(
   "/users",
+  requireFeature("manage_users"),
   asyncHandler(async (req, res) => {
     const parsedBody = createUserSchema.safeParse(req.body);
     if (!parsedBody.success) {
@@ -192,6 +196,7 @@ usersRouter.post(
 
 usersRouter.patch(
   "/users/:userId",
+  requireFeature("manage_users"),
   asyncHandler(async (req, res) => {
     const userId = req.params.userId;
     if (!userId || Array.isArray(userId)) {
@@ -271,6 +276,7 @@ usersRouter.patch(
 
 usersRouter.delete(
   "/users/:userId",
+  requireFeature("manage_users"),
   asyncHandler(async (req, res) => {
     const userId = req.params.userId;
     if (!userId || Array.isArray(userId)) {

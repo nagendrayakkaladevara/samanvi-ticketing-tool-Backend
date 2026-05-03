@@ -158,7 +158,7 @@ export function buildOpenApiSpec() {
                     "severity",
                     "priority",
                     "categoryId",
-                    "busId",
+                    "busNumber",
                     "slaDueAt",
                   ],
                   properties: {
@@ -170,7 +170,11 @@ export function buildOpenApiSpec() {
                     },
                     priority: { type: "string", enum: ["p1", "p2", "p3"] },
                     categoryId: { type: "string" },
-                    busId: { type: "string" },
+                    busNumber: {
+                      type: "string",
+                      description:
+                        "Matched case-insensitively; if no bus exists, one is created with this value stored in lowercase.",
+                    },
                     slaDueAt: { type: "string", format: "date-time" },
                   },
                 },

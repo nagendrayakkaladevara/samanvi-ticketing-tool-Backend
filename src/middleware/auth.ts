@@ -32,7 +32,11 @@ export function requireFeature(feature: Feature): RequestHandler {
     }
 
     if (!canAccessFeature(req.user.roleCode, feature)) {
-      next(forbidden("You are not allowed to perform this action"));
+      next(
+        forbidden(
+          `You are not allowed to perform this action (requires ${feature})`,
+        ),
+      );
       return;
     }
 

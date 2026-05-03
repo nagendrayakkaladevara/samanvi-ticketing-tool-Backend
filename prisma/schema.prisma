@@ -17,6 +17,7 @@ enum TicketStatus {
   created
   assigned
   in_progress
+  blocked
   resolved
   closed
   reopened

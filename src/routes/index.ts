@@ -11,6 +11,7 @@ import { issueCategoriesRouter } from "./issue-categories.route";
 import { successMetricsRouter } from "./success-metrics.route";
 import { ticketsRouter } from "./tickets.route";
 import { usersRouter } from "./users.route";
+import { workersRouter } from "./workers.route";
 
 const apiRouter = Router();
 
@@ -21,6 +22,7 @@ apiRouter.use(issueCategoriesRouter);
 apiRouter.use(busesRouter);
 apiRouter.use(usersRouter);
 apiRouter.use(ticketsRouter);
+apiRouter.use(workersRouter);
 apiRouter.use(dashboardRouter);
 apiRouter.use(successMetricsRouter);
 apiRouter.use(accessControlRouter);
