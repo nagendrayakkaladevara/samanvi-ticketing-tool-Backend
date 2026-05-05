@@ -23,6 +23,7 @@ export function buildOpenApiSpec() {
       { name: "Auth" },
       { name: "Tickets" },
       { name: "Access Control" },
+      { name: "Workers" },
       { name: "Users" },
       { name: "Issue Categories" },
       { name: "Buses" },
@@ -97,7 +98,15 @@ export function buildOpenApiSpec() {
               required: false,
               schema: {
                 type: "string",
-                enum: ["created", "assigned", "in_progress", "resolved", "closed", "reopened"],
+                enum: [
+                  "created",
+                  "assigned",
+                  "in_progress",
+                  "blocked",
+                  "resolved",
+                  "closed",
+                  "reopened",
+                ],
               },
             },
             {
@@ -296,7 +305,7 @@ export function buildOpenApiSpec() {
                   properties: {
                     status: {
                       type: "string",
-                      enum: ["assigned", "in_progress", "resolved", "closed"],
+                      enum: ["assigned", "in_progress", "blocked", "resolved", "closed"],
                     },
                     note: { type: "string" },
                   },
@@ -474,6 +483,17 @@ export function buildOpenApiSpec() {
           responses: {
             "201": { description: "User created" },
             "409": { description: "Username/email already exists" },
+            "403": { description: "Forbidden by role matrix" },
+          },
+        },
+      },
+      "/workers": {
+        get: {
+          tags: ["Workers"],
+          summary: "List active workers (Supervisor/Admin)",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": { description: "Workers list" },
             "403": { description: "Forbidden by role matrix" },
           },
         },
