@@ -106,6 +106,12 @@ usersRouter.get(
       select: userSelect,
     });
 
+    // Force fresh list responses while admin data changes frequently.
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    res.set("Surrogate-Control", "no-store");
+
     res.status(200).json({
       success: true,
       data: {
