@@ -243,7 +243,7 @@ async function resolveBusIdForTicketCreation(
   tx: Prisma.TransactionClient,
   busNumberInput: string,
 ): Promise<string> {
-  const normalized = busNumberInput.trim().toLowerCase();
+  const normalized = busNumberInput.trim().toUpperCase();
   const existing = await tx.bus.findFirst({
     where: {
       busNumber: { equals: normalized, mode: "insensitive" },

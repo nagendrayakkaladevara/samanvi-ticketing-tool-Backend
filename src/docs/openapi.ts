@@ -182,7 +182,7 @@ export function buildOpenApiSpec() {
                     busNumber: {
                       type: "string",
                       description:
-                        "Matched case-insensitively; if no bus exists, one is created with this value stored in lowercase.",
+                        "Matched case-insensitively; if no bus exists, one is created with this value stored in uppercase.",
                     },
                     slaDueAt: { type: "string", format: "date-time" },
                   },

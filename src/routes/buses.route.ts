@@ -74,6 +74,10 @@ const busesRouter = Router();
 
 busesRouter.use(requireAuth);
 
+function normalizeBusNumber(busNumber: string): string {
+  return busNumber.trim().toUpperCase();
+}
+
 busesRouter.get(
   "/buses",
   asyncHandler(async (_req, res) => {
@@ -156,7 +160,7 @@ busesRouter.post(
     try {
       const bus = await prisma.bus.create({
         data: {
-          busNumber: parsedBody.data.busNumber,
+          busNumber: normalizeBusNumber(parsedBody.data.busNumber),
           lastMaintenanceDate: parsedBody.data.lastMaintenanceDate
             ? new Date(parsedBody.data.lastMaintenanceDate)
             : null,
@@ -209,7 +213,7 @@ busesRouter.patch(
         where: { id: busId },
         data: {
           ...(parsedBody.data.busNumber !== undefined
-            ? { busNumber: parsedBody.data.busNumber }
+            ? { busNumber: normalizeBusNumber(parsedBody.data.busNumber) }
             : {}),
           ...(parsedBody.data.lastMaintenanceDate !== undefined
             ? {
