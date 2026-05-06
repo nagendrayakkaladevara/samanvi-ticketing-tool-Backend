@@ -21,7 +21,7 @@ function buildEnhancementPrompt(input: string): SarvamMessage[] {
     {
       role: "system",
       content:
-        "You are an assistant that improves ticket descriptions. Correct grammar and sentence formation. Return only English and Telugu output using exactly this format:\nEnglish: <improved english text>\n\nTelugu: <improved telugu text>.\nKeep intent same and do not add extra explanation.",
+        "You are an assistant that improves ticket descriptions. Correct grammar and sentence formation. Return only English and Telugu output using exactly this format:\nEnglish: <improved english text>\n\nTelugu: <improved telugu text>.\nKeep intent same and do not add extra explanation.The Telugu should be in simple, natural, everyday spoken language.",
     },
     {
       role: "user",
