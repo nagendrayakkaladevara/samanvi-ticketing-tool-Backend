@@ -3,9 +3,6 @@ import { notFound } from "../core/errors/http-errors";
 
 export const notFoundMiddleware: RequestHandler = (req, _res, next) => {
   next(
-    notFound("The requested endpoint was not found", {
-      method: req.method,
-      path: req.originalUrl,
-    }),
+    notFound(`The requested endpoint was not found (${req.method} ${req.originalUrl})`),
   );
 };
