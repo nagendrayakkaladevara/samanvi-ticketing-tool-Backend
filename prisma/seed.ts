@@ -1,17 +1,8 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import {
-  PrismaClient,
-  RoleCode,
-  TicketActivityType,
-  TicketPriority,
-  TicketSeverity,
-  TicketStatus,
-} from "@prisma/client";
+import { PrismaClient, RoleCode, TicketPriority, TicketSeverity, TicketStatus } from "@prisma/client";
 import { Pool } from "pg";
 import { hashPassword } from "../src/auth/password";
-
-const SEED_TICKET_TITLE_PREFIX = "[Seed]";
 
 const connectionString = process.env["DATABASE_URL"];
 
@@ -55,51 +46,11 @@ async function main() {
   });
   const roleIdByCode = new Map(roleRows.map((row) => [row.code, row.id]));
 
-  const defaultUsers = [
-    {
-      username: "admin",
-      password: "admin123",
-      displayName: "Admin User",
-      roleCode: RoleCode.admin,
-    },
-    {
-      username: "supervisor",
-      password: "supervisor123",
-      displayName: "Supervisor User",
-      roleCode: RoleCode.supervisor,
-    },
-    {
-      username: "worker",
-      password: "worker123",
-      displayName: "Worker User",
-      roleCode: RoleCode.worker,
-    },
-  ] as const;
-
-  for (const user of defaultUsers) {
-    const roleId = roleIdByCode.get(user.roleCode);
-    if (!roleId) {
-      throw new Error(`Missing role id for code ${user.roleCode}`);
-    }
-
-    const passwordHash = await hashPassword(user.password);
-
-    await prisma.user.upsert({
-      where: { username: user.username },
-      update: {
-        displayName: user.displayName,
-        roleId,
-        isActive: true,
-        passwordHash,
-      },
-      create: {
-        username: user.username,
-        passwordHash,
-        displayName: user.displayName,
-        roleId,
-      },
-    });
-  }
+  // Clear existing transactional and master data before creating a fresh dataset.
+  await prisma.ticketActivityLog.deleteMany({});
+  await prisma.ticket.deleteMany({});
+  await prisma.bus.deleteMany({});
+  await prisma.user.deleteMany({});
 
   const defaultCategories = [
     "Engine",
@@ -120,36 +71,61 @@ async function main() {
     });
   }
 
+  const defaultUsers = [
+    { username: "admin1", password: "admin123", displayName: "Admin 1", roleCode: RoleCode.admin },
+    { username: "supervisor1", password: "supervisor123", displayName: "Supervisor 1", roleCode: RoleCode.supervisor },
+    { username: "supervisor2", password: "supervisor123", displayName: "Supervisor 2", roleCode: RoleCode.supervisor },
+    { username: "worker1", password: "worker123", displayName: "Worker 1", roleCode: RoleCode.worker },
+    { username: "worker2", password: "worker123", displayName: "Worker 2", roleCode: RoleCode.worker },
+    { username: "worker3", password: "worker123", displayName: "Worker 3", roleCode: RoleCode.worker },
+    { username: "worker4", password: "worker123", displayName: "Worker 4", roleCode: RoleCode.worker },
+    { username: "worker5", password: "worker123", displayName: "Worker 5", roleCode: RoleCode.worker },
+  ] as const;
+
+  for (const user of defaultUsers) {
+    const roleId = roleIdByCode.get(user.roleCode);
+    if (!roleId) {
+      throw new Error(`Missing role id for code ${user.roleCode}`);
+    }
+    const passwordHash = await hashPassword(user.password);
+    await prisma.user.create({
+      data: {
+        username: user.username,
+        passwordHash,
+        displayName: user.displayName,
+        roleId,
+      },
+    });
+  }
+
   const seedBuses = [
     { busNumber: "BUS-1001", lastMaintenanceDate: new Date("2026-04-01T08:00:00.000Z") },
     { busNumber: "BUS-1002", lastMaintenanceDate: new Date("2026-04-15T14:30:00.000Z") },
     { busNumber: "BUS-2003", lastMaintenanceDate: null },
     { busNumber: "BUS-2004", lastMaintenanceDate: new Date("2026-03-20T11:00:00.000Z") },
+    { busNumber: "BUS-3005", lastMaintenanceDate: new Date("2026-05-01T09:00:00.000Z") },
   ] as const;
 
   for (const bus of seedBuses) {
-    await prisma.bus.upsert({
-      where: { busNumber: bus.busNumber },
-      update: { lastMaintenanceDate: bus.lastMaintenanceDate },
-      create: {
+    await prisma.bus.create({
+      data: {
         busNumber: bus.busNumber,
         lastMaintenanceDate: bus.lastMaintenanceDate,
       },
     });
   }
 
-  await prisma.ticket.deleteMany({
-    where: { title: { startsWith: SEED_TICKET_TITLE_PREFIX } },
+  const users = await prisma.user.findMany({
+    select: { id: true, username: true, role: { select: { code: true } } },
+    orderBy: { username: "asc" },
   });
+  const admins = users.filter((u) => u.role.code === RoleCode.admin);
+  const supervisors = users.filter((u) => u.role.code === RoleCode.supervisor);
+  const workers = users.filter((u) => u.role.code === RoleCode.worker);
 
-  const [adminUser, supervisorUser, workerUser] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { username: "admin" }, select: { id: true } }),
-    prisma.user.findUniqueOrThrow({
-      where: { username: "supervisor" },
-      select: { id: true },
-    }),
-    prisma.user.findUniqueOrThrow({ where: { username: "worker" }, select: { id: true } }),
-  ]);
+  if (admins.length !== 1 || supervisors.length !== 2 || workers.length !== 5) {
+    throw new Error("Failed to create requested user distribution (1 admin, 2 supervisors, 5 workers)");
+  }
 
   const categoryMap = await prisma.issueCategory.findMany({
     where: { name: { in: [...defaultCategories] } },
@@ -165,342 +141,75 @@ async function main() {
 
   const dayMs = 86_400_000;
   const sla48h = BigInt(48 * dayMs);
-
-  const seedTicketSpecs = [
-    {
-      title: `${SEED_TICKET_TITLE_PREFIX} Reported odd noise from rear axle`,
-      description:
-        "Driver reports grinding noise when turning left. Vehicle still operational; inspection requested.",
-      status: TicketStatus.created,
-      severity: TicketSeverity.medium,
-      priority: TicketPriority.p2,
-      busNumber: "BUS-1001" as const,
-      categoryName: "Engine" as const,
-      createdById: adminUser.id,
-      assignedToId: null as string | null,
-      assignedById: null as string | null,
-      assignedAt: null as Date | null,
-      slaDueAt: new Date(Date.now() + 2 * dayMs),
-      slaDurationMs: sla48h,
-      resolvedAt: null as Date | null,
-      closedAt: null as Date | null,
-      reopenedCount: 0,
-      logs: [
-        {
-          actorUserId: adminUser.id,
-          actionType: TicketActivityType.created,
-          fromStatus: null as TicketStatus | null,
-          toStatus: TicketStatus.created,
-          note: "Ticket opened from daily inspection checklist.",
-          offsetMs: 0,
-        },
-      ],
-    },
-    {
-      title: `${SEED_TICKET_TITLE_PREFIX} Interior lighting failure — rear cabin`,
-      description: "Several LED strips not powering on. Fuse panel checked; escalate to electrical.",
-      status: TicketStatus.assigned,
-      severity: TicketSeverity.low,
-      priority: TicketPriority.p3,
-      busNumber: "BUS-1002",
-      categoryName: "Electrical",
-      createdById: supervisorUser.id,
-      assignedToId: workerUser.id,
-      assignedById: supervisorUser.id,
-      assignedAt: new Date("2026-05-01T09:15:00.000Z"),
-      slaDueAt: new Date("2026-05-05T17:00:00.000Z"),
-      slaDurationMs: sla48h,
-      resolvedAt: null,
-      closedAt: null,
-      reopenedCount: 0,
-      logs: [
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.created,
-          fromStatus: null,
-          toStatus: TicketStatus.created,
-          note: null,
-          offsetMs: 0,
-        },
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.assigned,
-          fromStatus: TicketStatus.created,
-          toStatus: TicketStatus.assigned,
-          note: "Assigned to on-shift technician.",
-          offsetMs: 15 * 60_000,
-        },
-      ],
-    },
-    {
-      title: `${SEED_TICKET_TITLE_PREFIX} Side panel dent — parking incident`,
-      description: "Dent on passenger side near wheel well. Cosmetic plus potential moisture ingress.",
-      status: TicketStatus.in_progress,
-      severity: TicketSeverity.high,
-      priority: TicketPriority.p2,
-      busNumber: "BUS-2003",
-      categoryName: "Body Damage",
-      createdById: adminUser.id,
-      assignedToId: workerUser.id,
-      assignedById: supervisorUser.id,
-      assignedAt: new Date("2026-05-02T11:00:00.000Z"),
-      slaDueAt: new Date("2026-05-06T18:00:00.000Z"),
-      slaDurationMs: sla48h,
-      resolvedAt: null,
-      closedAt: null,
-      reopenedCount: 0,
-      logs: [
-        {
-          actorUserId: adminUser.id,
-          actionType: TicketActivityType.created,
-          fromStatus: null,
-          toStatus: TicketStatus.created,
-          note: null,
-          offsetMs: 0,
-        },
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.assigned,
-          fromStatus: TicketStatus.created,
-          toStatus: TicketStatus.assigned,
-          note: null,
-          offsetMs: 20 * 60_000,
-        },
-        {
-          actorUserId: workerUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.assigned,
-          toStatus: TicketStatus.in_progress,
-          note: "Parts ordered; repair scheduled.",
-          offsetMs: 45 * 60_000,
-        },
-      ],
-    },
-    {
-      title: `${SEED_TICKET_TITLE_PREFIX} Tire pressure warning — all sensors`,
-      description: "TPMS warnings across axles after cold snap. Verified pressures manually; sensors flaky.",
-      status: TicketStatus.resolved,
-      severity: TicketSeverity.medium,
-      priority: TicketPriority.p3,
-      busNumber: "BUS-2004",
-      categoryName: "Tires",
-      createdById: supervisorUser.id,
-      assignedToId: workerUser.id,
-      assignedById: supervisorUser.id,
-      assignedAt: new Date("2026-04-28T07:30:00.000Z"),
-      slaDueAt: new Date("2026-05-02T23:59:59.000Z"),
-      slaDurationMs: sla48h,
-      resolvedAt: new Date("2026-05-01T16:00:00.000Z"),
-      closedAt: null,
-      reopenedCount: 0,
-      logs: [
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.created,
-          fromStatus: null,
-          toStatus: TicketStatus.created,
-          note: null,
-          offsetMs: 0,
-        },
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.assigned,
-          fromStatus: TicketStatus.created,
-          toStatus: TicketStatus.assigned,
-          note: null,
-          offsetMs: 10 * 60_000,
-        },
-        {
-          actorUserId: workerUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.assigned,
-          toStatus: TicketStatus.in_progress,
-          note: "Recalibrated sensors.",
-          offsetMs: 2 * 60 * 60_000,
-        },
-        {
-          actorUserId: workerUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.in_progress,
-          toStatus: TicketStatus.resolved,
-          note: "Road test OK; TPMS clear.",
-          offsetMs: 3 * 60 * 60_000,
-        },
-      ],
-    },
-    {
-      title: `${SEED_TICKET_TITLE_PREFIX} Seat latch broken — row 4`,
-      description: "Passenger seat won't lock upright. Tagged out of service until fixed.",
-      status: TicketStatus.closed,
-      severity: TicketSeverity.low,
-      priority: TicketPriority.p3,
-      busNumber: "BUS-1001",
-      categoryName: "Interior",
-      createdById: adminUser.id,
-      assignedToId: workerUser.id,
-      assignedById: supervisorUser.id,
-      assignedAt: new Date("2026-04-20T08:00:00.000Z"),
-      slaDueAt: new Date("2026-04-24T12:00:00.000Z"),
-      slaDurationMs: sla48h,
-      resolvedAt: new Date("2026-04-22T14:00:00.000Z"),
-      closedAt: new Date("2026-04-23T09:30:00.000Z"),
-      reopenedCount: 0,
-      logs: [
-        {
-          actorUserId: adminUser.id,
-          actionType: TicketActivityType.created,
-          fromStatus: null,
-          toStatus: TicketStatus.created,
-          note: null,
-          offsetMs: 0,
-        },
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.assigned,
-          fromStatus: TicketStatus.created,
-          toStatus: TicketStatus.assigned,
-          note: null,
-          offsetMs: 30 * 60_000,
-        },
-        {
-          actorUserId: workerUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.assigned,
-          toStatus: TicketStatus.in_progress,
-          note: "Replacement latch installed.",
-          offsetMs: 24 * 60 * 60_000,
-        },
-        {
-          actorUserId: workerUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.in_progress,
-          toStatus: TicketStatus.resolved,
-          note: null,
-          offsetMs: 26 * 60 * 60_000,
-        },
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.resolved,
-          toStatus: TicketStatus.closed,
-          note: "Verified on walkthrough.",
-          offsetMs: 27 * 60 * 60_000,
-        },
-      ],
-    },
-    {
-      title: `${SEED_TICKET_TITLE_PREFIX} HVAC weak airflow — driver zone`,
-      description: "Previously resolved; issue returned after hot weekend. Reopen for further diagnostics.",
-      status: TicketStatus.reopened,
-      severity: TicketSeverity.critical,
-      priority: TicketPriority.p1,
-      busNumber: "BUS-1002",
-      categoryName: "Other",
-      createdById: supervisorUser.id,
-      assignedToId: workerUser.id,
-      assignedById: supervisorUser.id,
-      assignedAt: new Date("2026-05-03T06:00:00.000Z"),
-      slaDueAt: new Date("2026-05-04T06:00:00.000Z"),
-      slaDurationMs: sla48h,
-      resolvedAt: null,
-      closedAt: null,
-      reopenedCount: 1,
-      logs: [
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.created,
-          fromStatus: null,
-          toStatus: TicketStatus.created,
-          note: null,
-          offsetMs: 0,
-        },
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.assigned,
-          fromStatus: TicketStatus.created,
-          toStatus: TicketStatus.assigned,
-          note: null,
-          offsetMs: 5 * 60_000,
-        },
-        {
-          actorUserId: workerUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.assigned,
-          toStatus: TicketStatus.resolved,
-          note: "Filter swap; seemed OK.",
-          offsetMs: 3 * 60 * 60_000,
-        },
-        {
-          actorUserId: supervisorUser.id,
-          actionType: TicketActivityType.status_changed,
-          fromStatus: TicketStatus.resolved,
-          toStatus: TicketStatus.closed,
-          note: null,
-          offsetMs: 4 * 60 * 60_000,
-        },
-        {
-          actorUserId: adminUser.id,
-          actionType: TicketActivityType.reopened,
-          fromStatus: TicketStatus.closed,
-          toStatus: TicketStatus.reopened,
-          note: "Customer callback — still intermittent.",
-          offsetMs: 5 * 60 * 60_000,
-        },
-      ],
-    },
+  const statuses: TicketStatus[] = [
+    TicketStatus.created,
+    TicketStatus.assigned,
+    TicketStatus.in_progress,
+    TicketStatus.blocked,
+    TicketStatus.resolved,
+    TicketStatus.closed,
+    TicketStatus.reopened,
   ];
+  const severities: TicketSeverity[] = [
+    TicketSeverity.critical,
+    TicketSeverity.high,
+    TicketSeverity.medium,
+    TicketSeverity.low,
+  ];
+  const priorities: TicketPriority[] = [TicketPriority.p1, TicketPriority.p2, TicketPriority.p3];
+  const busNumbers = seedBuses.map((bus) => bus.busNumber);
+  const categoryNames = [...defaultCategories];
 
-  const ticketBaseTime = new Date("2026-05-01T12:00:00.000Z").getTime();
+  for (let i = 0; i < 20; i += 1) {
+    const busNumber = busNumbers[i % busNumbers.length];
+    const categoryName = categoryNames[i % categoryNames.length];
+    const supervisor = supervisors[i % supervisors.length];
+    const worker = workers[i % workers.length];
+    const status = statuses[i % statuses.length];
+    const severity = severities[i % severities.length];
+    const priority = priorities[i % priorities.length];
 
-  for (const spec of seedTicketSpecs) {
-    const categoryId = categoryIdByName.get(spec.categoryName);
-    const busId = busIdByNumber.get(spec.busNumber);
+    const categoryId = categoryIdByName.get(categoryName);
+    const busId = busIdByNumber.get(busNumber);
     if (!categoryId || !busId) {
-      throw new Error(`Missing category or bus for seed ticket: ${spec.title}`);
+      throw new Error(`Missing category or bus for generated ticket ${i + 1}`);
     }
 
-    const ticket = await prisma.ticket.create({
+    const createdAt = new Date(Date.now() - (20 - i) * 6 * 60 * 60_000);
+    const assigned = status !== TicketStatus.created;
+    const completed = status === TicketStatus.resolved || status === TicketStatus.closed;
+    const closed = status === TicketStatus.closed;
+    const reopenedCount = status === TicketStatus.reopened ? 1 : 0;
+
+    await prisma.ticket.create({
       data: {
-        title: spec.title,
-        description: spec.description,
-        status: spec.status,
-        severity: spec.severity,
-        priority: spec.priority,
+        ticketNumber: 1001 + i,
+        title: `[Seed] Ticket ${String(i + 1).padStart(2, "0")} - ${categoryName} issue`,
+        description: `Generated seed ticket ${i + 1} for ${busNumber}.`,
+        status,
+        severity,
+        priority,
         busId,
         categoryId,
-        createdById: spec.createdById,
-        assignedToId: spec.assignedToId,
-        assignedById: spec.assignedById,
-        assignedAt: spec.assignedAt,
-        slaDueAt: spec.slaDueAt,
-        slaDurationMs: spec.slaDurationMs,
-        resolvedAt: spec.resolvedAt,
-        closedAt: spec.closedAt,
-        reopenedCount: spec.reopenedCount,
+        createdById: i % 4 === 0 ? admins[0]!.id : supervisor.id,
+        assignedToId: assigned ? worker.id : null,
+        assignedById: assigned ? supervisor.id : null,
+        assignedAt: assigned ? new Date(createdAt.getTime() + 30 * 60_000) : null,
+        slaDueAt: new Date(createdAt.getTime() + 48 * 60 * 60_000),
+        slaDurationMs: sla48h,
+        resolvedAt: completed ? new Date(createdAt.getTime() + 10 * 60 * 60_000) : null,
+        closedAt: closed ? new Date(createdAt.getTime() + 12 * 60 * 60_000) : null,
+        reopenedCount,
+        createdAt,
       },
     });
-
-    for (const log of spec.logs) {
-      const createdAt = new Date(ticketBaseTime + log.offsetMs);
-      await prisma.ticketActivityLog.create({
-        data: {
-          ticketId: ticket.id,
-          actorUserId: log.actorUserId,
-          actionType: log.actionType,
-          fromStatus: log.fromStatus ?? undefined,
-          toStatus: log.toStatus ?? undefined,
-          note: log.note ?? undefined,
-          createdAt,
-        },
-      });
-    }
   }
 
   console.log("Seeded default roles:", roles.map((role) => role.code).join(", "));
-  console.log("Seeded default users:", defaultUsers.map((user) => user.username).join(", "));
+  console.log("Seeded users:", defaultUsers.map((user) => user.username).join(", "));
   console.log("Seeded default issue categories:", defaultCategories.join(", "));
   console.log("Seeded buses:", seedBuses.map((b) => b.busNumber).join(", "));
-  console.log(`Seeded ${seedTicketSpecs.length} dummy tickets and activity logs (titles prefixed "${SEED_TICKET_TITLE_PREFIX}").`);
+  console.log("Seeded 20 tickets.");
 }
 
 main()
