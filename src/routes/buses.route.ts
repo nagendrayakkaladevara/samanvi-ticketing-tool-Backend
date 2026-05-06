@@ -24,6 +24,7 @@ const busHistoryLogSelect = {
 
 const busTicketHistorySelect = {
   id: true,
+  ticketNumber: true,
   title: true,
   status: true,
   severity: true,

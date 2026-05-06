@@ -36,6 +36,17 @@ const ticketListQuerySchema = z.object({
   includeUnassigned: z.coerce.boolean().default(true),
 });
 
+const ticketNumberSearchQuerySchema = z.object({
+  ticketNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "ticketNumber must be exactly 4 digits")
+    .transform((value) => Number.parseInt(value, 10))
+    .refine((value) => value >= 1000 && value <= 9999, {
+      message: "ticketNumber must be between 1000 and 9999",
+    }),
+});
+
 const assignTicketSchema = z.object({
   assignedToId: z.string().trim().min(1),
   note: z.string().trim().min(1).max(2_000).optional(),
@@ -128,6 +139,7 @@ function recalculateSlaDueAt({
 
 const ticketSelect = {
   id: true,
+  ticketNumber: true,
   title: true,
   description: true,
   status: true,
@@ -210,6 +222,62 @@ async function findVisibleTicketOrThrow(
   }
 
   return ticket;
+}
+
+async function findVisibleTicketByNumberOrThrow(
+  ticketNumber: number,
+  viewer: AccessTokenPayload,
+) {
+  const ticket = await prisma.ticket.findUnique({
+    where: { ticketNumber },
+    select: ticketSelect,
+  });
+
+  if (!ticket) {
+    throw notFound("Ticket not found");
+  }
+
+  if (viewer.roleCode === "worker" && ticket.assignedTo?.id !== viewer.sub) {
+    throw notFound("Ticket not found");
+  }
+
+  return ticket;
+}
+
+function isTicketNumberConflictError(error: unknown): boolean {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2002"
+  ) {
+    return false;
+  }
+
+  const target = error.meta?.target;
+  if (typeof target === "string") {
+    return target.includes("ticketNumber");
+  }
+  if (Array.isArray(target)) {
+    return target.some(
+      (item) => typeof item === "string" && item.includes("ticketNumber"),
+    );
+  }
+  return false;
+}
+
+async function getNextTicketNumber(tx: Prisma.TransactionClient): Promise<number> {
+  const latestTicket = await tx.ticket.findFirst({
+    orderBy: { ticketNumber: "desc" },
+    select: { ticketNumber: true },
+  });
+  const nextTicketNumber = latestTicket ? latestTicket.ticketNumber + 1 : 1000;
+
+  if (nextTicketNumber > 9999) {
+    throw badRequest(
+      "Ticket number capacity reached (9999). Please contact an administrator.",
+    );
+  }
+
+  return nextTicketNumber;
 }
 
 function toTicketWithOverdue(
@@ -303,50 +371,69 @@ ticketsRouter.post(
 
     const actorUserId = req.user.sub;
 
-    const ticket = await prisma.$transaction(async (tx) => {
-      const busId = await resolveBusIdForTicketCreation(
-        tx,
-        parsedBody.data.busNumber,
-      );
-      const slaDueAt = new Date(parsedBody.data.slaDueAt);
-      const createdTicket = await tx.ticket.create({
-        data: {
-          title: parsedBody.data.title,
-          description: parsedBody.data.description,
-          severity: parsedBody.data.severity,
-          priority: parsedBody.data.priority,
-          categoryId: parsedBody.data.categoryId,
-          busId,
-          slaDueAt,
-          slaDurationMs: 0n,
-          createdById: actorUserId,
-          status: TicketStatus.created,
-        },
-        select: { id: true, createdAt: true },
-      });
+    const maxCreateAttempts = 3;
+    let ticket: TicketRecord | null = null;
 
-      const slaDurationMs = BigInt(
-        Math.max(slaDueAt.getTime() - createdTicket.createdAt.getTime(), 0),
-      );
-      await tx.ticket.update({
-        where: { id: createdTicket.id },
-        data: { slaDurationMs },
-      });
+    for (let attempt = 1; attempt <= maxCreateAttempts; attempt += 1) {
+      try {
+        ticket = await prisma.$transaction(async (tx) => {
+          const busId = await resolveBusIdForTicketCreation(
+            tx,
+            parsedBody.data.busNumber,
+          );
+          const ticketNumber = await getNextTicketNumber(tx);
+          const slaDueAt = new Date(parsedBody.data.slaDueAt);
+          const createdTicket = await tx.ticket.create({
+            data: {
+              ticketNumber,
+              title: parsedBody.data.title,
+              description: parsedBody.data.description,
+              severity: parsedBody.data.severity,
+              priority: parsedBody.data.priority,
+              categoryId: parsedBody.data.categoryId,
+              busId,
+              slaDueAt,
+              slaDurationMs: 0n,
+              createdById: actorUserId,
+              status: TicketStatus.created,
+            },
+            select: { id: true, createdAt: true },
+          });
 
-      await tx.ticketActivityLog.create({
-        data: {
-          ticketId: createdTicket.id,
-          actorUserId,
-          actionType: TicketActivityType.created,
-          toStatus: TicketStatus.created,
-        },
-      });
+          const slaDurationMs = BigInt(
+            Math.max(slaDueAt.getTime() - createdTicket.createdAt.getTime(), 0),
+          );
+          await tx.ticket.update({
+            where: { id: createdTicket.id },
+            data: { slaDurationMs },
+          });
 
-      return tx.ticket.findUniqueOrThrow({
-        where: { id: createdTicket.id },
-        select: ticketSelect,
-      });
-    });
+          await tx.ticketActivityLog.create({
+            data: {
+              ticketId: createdTicket.id,
+              actorUserId,
+              actionType: TicketActivityType.created,
+              toStatus: TicketStatus.created,
+            },
+          });
+
+          return tx.ticket.findUniqueOrThrow({
+            where: { id: createdTicket.id },
+            select: ticketSelect,
+          });
+        });
+        break;
+      } catch (error) {
+        if (isTicketNumberConflictError(error) && attempt < maxCreateAttempts) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!ticket) {
+      throw badRequest("Unable to create ticket at the moment. Please retry.");
+    }
 
     res.status(201).json({
       success: true,
@@ -446,6 +533,32 @@ ticketsRouter.get(
       data: {
         items: toTicketListWithOverdue(tickets, now),
       },
+    });
+  }),
+);
+
+ticketsRouter.get(
+  "/tickets/search",
+  asyncHandler(async (req, res) => {
+    if (!req.user) {
+      throw badRequest("Authenticated user context is required");
+    }
+
+    const parsedQuery = ticketNumberSearchQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      throw badRequest("Invalid ticket search query params", {
+        issues: parsedQuery.error.issues,
+      });
+    }
+
+    const ticket = await findVisibleTicketByNumberOrThrow(
+      parsedQuery.data.ticketNumber,
+      req.user,
+    );
+
+    res.status(200).json({
+      success: true,
+      data: toTicketWithOverdue(ticket),
     });
   }),
 );

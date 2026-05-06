@@ -91,6 +91,7 @@ model IssueCategory {
 
 model Ticket {
   id             String        @id @default(cuid())
+  ticketNumber   Int           @unique
   title          String        @db.VarChar(160)
   description    String
   status         TicketStatus  @default(created)
