@@ -89,7 +89,8 @@ export function buildOpenApiSpec() {
       "/tickets": {
         get: {
           tags: ["Tickets"],
-          summary: "List tickets (role-aware visibility, includes overdue metadata)",
+          summary:
+            "List tickets (role-aware visibility, includes overdue metadata and 4-digit ticketNumber)",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -200,7 +201,8 @@ export function buildOpenApiSpec() {
       "/tickets/{ticketId}": {
         get: {
           tags: ["Tickets"],
-          summary: "Get ticket by id (role-aware visibility, includes overdue metadata)",
+          summary:
+            "Get ticket by id (role-aware visibility, includes overdue metadata and 4-digit ticketNumber)",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -213,6 +215,31 @@ export function buildOpenApiSpec() {
           responses: {
             "200": { description: "Ticket details" },
             "404": { description: "Ticket not found" },
+          },
+        },
+      },
+      "/tickets/search": {
+        get: {
+          tags: ["Tickets"],
+          summary: "Search ticket by 4-digit ticketNumber",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "query",
+              name: "ticketNumber",
+              required: true,
+              schema: {
+                type: "string",
+                pattern: "^\\d{4}$",
+              },
+              description: "Exactly 4 digits (1000-9999), for example 1007.",
+            },
+          ],
+          responses: {
+            "200": { description: "Ticket details for matching ticket number" },
+            "400": { description: "Invalid ticketNumber query param" },
+            "404": { description: "Ticket not found" },
+            "401": { description: "Missing/invalid token" },
           },
         },
       },
