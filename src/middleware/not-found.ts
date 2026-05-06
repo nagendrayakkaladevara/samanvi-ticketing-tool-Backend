@@ -2,5 +2,10 @@ import type { RequestHandler } from "express";
 import { notFound } from "../core/errors/http-errors";
 
 export const notFoundMiddleware: RequestHandler = (req, _res, next) => {
-  next(notFound(`Route ${req.method} ${req.originalUrl} not found`));
+  next(
+    notFound("The requested endpoint was not found", {
+      method: req.method,
+      path: req.originalUrl,
+    }),
+  );
 };

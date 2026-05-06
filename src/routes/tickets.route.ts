@@ -70,6 +70,35 @@ const allowedStatusTransitions: Record<TicketStatus, readonly TicketStatus[]> = 
   [TicketStatus.reopened]: [TicketStatus.assigned, TicketStatus.in_progress, TicketStatus.blocked],
 };
 
+function formatStatusList(statuses: readonly TicketStatus[]): string {
+  return statuses.map((status) => toDisplayStatus(status)).join(", ");
+}
+
+function toDisplayStatus(status: TicketStatus): string {
+  return status
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildInvalidTransitionMessage(
+  currentStatus: TicketStatus,
+  requestedStatus: TicketStatus,
+  allowedTransitions: readonly TicketStatus[],
+): string {
+  if (allowedTransitions.length === 0) {
+    return `You cannot move this ticket from ${toDisplayStatus(
+      currentStatus,
+    )}. It is in a final state. Use reopen to continue work.`;
+  }
+
+  return `You cannot move this ticket from ${toDisplayStatus(
+    currentStatus,
+  )} to ${toDisplayStatus(requestedStatus)}. Allowed next status: ${formatStatusList(
+    allowedTransitions,
+  )}.`;
+}
+
 const ticketActivityLogSelect = {
   id: true,
   actionType: true,
@@ -586,16 +615,24 @@ ticketsRouter.patch(
     const allowedTransitions = allowedStatusTransitions[ticket.status];
     if (!allowedTransitions.includes(parsedBody.data.status)) {
       throw badRequest(
-        `Invalid status transition from ${ticket.status} to ${parsedBody.data.status}`,
+        buildInvalidTransitionMessage(
+          ticket.status,
+          parsedBody.data.status,
+          allowedTransitions,
+        ),
       );
     }
 
     if (parsedBody.data.status === TicketStatus.resolved && !parsedBody.data.note) {
-      throw badRequest("Resolution note is required when resolving a ticket");
+      throw badRequest(
+        "A note is required before changing status to Resolved. Please add a short resolution note and try again.",
+      );
     }
 
     if (parsedBody.data.status === TicketStatus.blocked && !parsedBody.data.note) {
-      throw badRequest("A note is required when marking a ticket as blocked");
+      throw badRequest(
+        "A note is required before changing status to Blocked. Please explain what is blocking this ticket and try again.",
+      );
     }
 
     const now = new Date();
@@ -678,7 +715,11 @@ ticketsRouter.post(
       ticket.status !== TicketStatus.resolved &&
       ticket.status !== TicketStatus.closed
     ) {
-      throw badRequest("Only resolved or closed tickets can be reopened");
+      throw badRequest(
+        `You can reopen a ticket only when it is Resolved or Closed. Current status is ${toDisplayStatus(
+          ticket.status,
+        )}.`,
+      );
     }
 
     const reopenedAt = new Date();
