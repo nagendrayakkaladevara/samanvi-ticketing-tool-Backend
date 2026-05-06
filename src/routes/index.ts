@@ -9,6 +9,7 @@ import { dashboardRouter } from "./dashboard.route";
 import { maybeDocsRouter } from "./docs.route";
 import { healthRouter } from "./health.route";
 import { issueCategoriesRouter } from "./issue-categories.route";
+import { profileRouter } from "./profile.route";
 import { successMetricsRouter } from "./success-metrics.route";
 import { ticketsRouter } from "./tickets.route";
 import { usersRouter } from "./users.route";
@@ -18,6 +19,7 @@ const apiRouter = Router();
 
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/auth", authRouter);
+apiRouter.use(profileRouter);
 apiRouter.use(aiRouter);
 apiRouter.use(maybeDocsRouter());
 apiRouter.use(issueCategoriesRouter);

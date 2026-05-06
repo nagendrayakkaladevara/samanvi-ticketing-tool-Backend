@@ -3,8 +3,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { hashPassword } from "../auth/password";
 import { asyncHandler } from "../core/http/async-handler";
-import { badRequest, conflict, notFound } from "../core/errors/http-errors";
+import { badRequest, notFound } from "../core/errors/http-errors";
 import { prisma } from "../lib/prisma";
+import { toUserUniqueConflictError } from "../lib/prisma-user-unique";
 import { requireAuth, requireFeature } from "../middleware/auth";
 
 const managedRoleCodeSchema = z.enum([RoleCode.supervisor, RoleCode.worker]);
@@ -42,24 +43,6 @@ const userListQuerySchema = z.object({
   includeInactive: z.coerce.boolean().default(false),
   roleCode: managedRoleCodeSchema.optional(),
 });
-
-function toConflictError(error: Prisma.PrismaClientKnownRequestError) {
-  if (error.code !== "P2002") {
-    return null;
-  }
-
-  const target = Array.isArray(error.meta?.["target"])
-    ? (error.meta["target"] as string[])
-    : [];
-
-  if (target.includes("username")) {
-    return conflict("Username already exists");
-  }
-  if (target.includes("email")) {
-    return conflict("Email already exists");
-  }
-  return conflict("User with provided unique field already exists");
-}
 
 const userSelect = {
   id: true,
@@ -190,7 +173,7 @@ usersRouter.post(
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        const formattedError = toConflictError(error);
+        const formattedError = toUserUniqueConflictError(error);
         if (formattedError) {
           throw formattedError;
         }
@@ -270,7 +253,7 @@ usersRouter.patch(
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        const formattedError = toConflictError(error);
+        const formattedError = toUserUniqueConflictError(error);
         if (formattedError) {
           throw formattedError;
         }

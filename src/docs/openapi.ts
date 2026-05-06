@@ -21,6 +21,7 @@ export function buildOpenApiSpec() {
     tags: [
       { name: "Health" },
       { name: "Auth" },
+      { name: "Profile" },
       { name: "AI" },
       { name: "Tickets" },
       { name: "Access Control" },
@@ -84,6 +85,56 @@ export function buildOpenApiSpec() {
             "401": {
               description: "Missing/invalid token",
             },
+          },
+        },
+      },
+      "/profile": {
+        get: {
+          tags: ["Profile"],
+          summary: "Get current user profile from database",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Profile including email and timestamps",
+            },
+            "401": {
+              description: "Missing/invalid token or inactive user",
+            },
+          },
+        },
+        patch: {
+          tags: ["Profile"],
+          summary: "Update current user profile (displayName, email, password)",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  description:
+                    "At least one of displayName, email, or password. When password is set, currentPassword is required.",
+                  properties: {
+                    displayName: { type: "string" },
+                    email: { type: "string", nullable: true },
+                    password: { type: "string" },
+                    currentPassword: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description:
+                "Updated profile; accessToken present when displayName changed",
+            },
+            "400": { description: "Invalid payload" },
+            "401": {
+              description:
+                "Missing/invalid token, inactive user, or wrong currentPassword",
+            },
+            "409": { description: "Email conflict" },
           },
         },
       },
