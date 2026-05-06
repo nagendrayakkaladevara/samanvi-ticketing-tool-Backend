@@ -2,6 +2,7 @@ import { Router } from "express";
 import { env } from "../config/env";
 import { apiRateLimiter } from "../middleware/rate-limit";
 import { accessControlRouter } from "./access-control.route";
+import { aiRouter } from "./ai.route";
 import { authRouter } from "./auth.route";
 import { busesRouter } from "./buses.route";
 import { dashboardRouter } from "./dashboard.route";
@@ -17,6 +18,7 @@ const apiRouter = Router();
 
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/auth", authRouter);
+apiRouter.use(aiRouter);
 apiRouter.use(maybeDocsRouter());
 apiRouter.use(issueCategoriesRouter);
 apiRouter.use(busesRouter);

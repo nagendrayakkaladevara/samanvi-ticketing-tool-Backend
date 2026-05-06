@@ -21,6 +21,7 @@ export function buildOpenApiSpec() {
     tags: [
       { name: "Health" },
       { name: "Auth" },
+      { name: "AI" },
       { name: "Tickets" },
       { name: "Access Control" },
       { name: "Workers" },
@@ -83,6 +84,33 @@ export function buildOpenApiSpec() {
             "401": {
               description: "Missing/invalid token",
             },
+          },
+        },
+      },
+      "/ai/enhance-ticket-description": {
+        post: {
+          tags: ["AI"],
+          summary: "Enhance ticket description in English and Telugu",
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["description"],
+                  properties: {
+                    description: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            "200": { description: "Enhanced bilingual description text" },
+            "400": { description: "Invalid payload" },
+            "401": { description: "Missing/invalid token" },
+            "502": { description: "AI provider failure" },
           },
         },
       },

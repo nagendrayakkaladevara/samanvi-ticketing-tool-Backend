@@ -17,6 +17,13 @@ const envSchema = z.object({
   JWT_SECRET: z.string().trim().min(32),
   JWT_EXPIRES_IN: z.string().trim().min(1).default("1d"),
   DATABASE_URL: z.string().trim().url(),
+  SARVAM_API_KEY: z.string().trim().min(1),
+  SARVAM_API_URL: z
+    .string()
+    .trim()
+    .url()
+    .default("https://api.sarvam.ai/v1/chat/completions"),
+  SARVAM_MODEL: z.string().trim().min(1).default("sarvam-30b"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -41,6 +48,9 @@ export const env = {
   jwtSecret: parsedEnv.data.JWT_SECRET,
   jwtExpiresIn: parsedEnv.data.JWT_EXPIRES_IN,
   databaseUrl: parsedEnv.data.DATABASE_URL,
+  sarvamApiKey: parsedEnv.data.SARVAM_API_KEY,
+  sarvamApiUrl: parsedEnv.data.SARVAM_API_URL,
+  sarvamModel: parsedEnv.data.SARVAM_MODEL,
 } as const;
 
 export type Env = typeof env;
