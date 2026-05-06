@@ -437,6 +437,28 @@ export function buildOpenApiSpec() {
           },
         },
       },
+      "/dashboard/admin-summary": {
+        get: {
+          tags: ["Dashboard"],
+          summary:
+            "Admin dashboard summary sections: snapshot, queue, SLA, speed, and agent leaderboard (workers see assigned-to-me scope)",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "query",
+              name: "days",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 90, default: 14 },
+              description: "Rolling UTC window length used for new/resolved/speed summaries",
+            },
+          ],
+          responses: {
+            "200": { description: "Admin dashboard summary payload" },
+            "400": { description: "Invalid query" },
+            "403": { description: "Forbidden by role matrix" },
+          },
+        },
+      },
       "/metrics/success": {
         get: {
           tags: ["Metrics"],
