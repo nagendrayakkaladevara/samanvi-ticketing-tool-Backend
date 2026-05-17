@@ -520,7 +520,7 @@ export function buildOpenApiSpec() {
         get: {
           tags: ["Dashboard"],
           summary:
-            "Admin dashboard summary sections: snapshot, queue, SLA, speed, and agent leaderboard (workers see assigned-to-me scope)",
+            "Admin dashboard summary sections: snapshot, queue, SLA, speed, and agent leaderboard (workers see assigned-to-me scope). queue.openByStatus includes ticket status counts plus an unassigned count (open tickets with no assignee; same value as snapshot.unassignedOpenTickets for global scope).",
           security: [{ bearerAuth: [] }],
           parameters: [
             {

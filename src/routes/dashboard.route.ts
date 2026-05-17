@@ -537,9 +537,12 @@ dashboardRouter.get(
     const priorityOpenCounts = Object.fromEntries(
       openByPriorityRows.map((row) => [row.priority, row._count]),
     );
-    const statusOpenCounts = Object.fromEntries(
-      openByStatusRows.map((row) => [row.status, row._count]),
-    );
+    const statusOpenCounts = {
+      ...Object.fromEntries(
+        openByStatusRows.map((row) => [row.status, row._count]),
+      ),
+      unassigned: unassignedOpen,
+    };
     const severityOpenCounts = {
       [TicketSeverity.critical]: 0,
       [TicketSeverity.high]: 0,
