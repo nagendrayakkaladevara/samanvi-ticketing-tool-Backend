@@ -386,13 +386,14 @@ dashboardRouter.get(
           },
         },
       }),
-      prisma.ticket.count({
-        where: {
-          ...scopeWhere,
-          status: openStatuses,
-          assignedToId: null,
-        },
-      }),
+      isWorker
+        ? Promise.resolve(0)
+        : prisma.ticket.count({
+            where: {
+              status: openStatuses,
+              assignedToId: null,
+            },
+          }),
       prisma.ticket.findFirst({
         where: {
           ...scopeWhere,
@@ -541,7 +542,7 @@ dashboardRouter.get(
       ...Object.fromEntries(
         openByStatusRows.map((row) => [row.status, row._count]),
       ),
-      unassigned: unassignedOpen,
+      ...(isWorker ? {} : { unassigned: unassignedOpen }),
     };
     const severityOpenCounts = {
       [TicketSeverity.critical]: 0,
@@ -568,7 +569,7 @@ dashboardRouter.get(
           closedTickets: totalClosed,
           newTicketsInWindow: createdInWindow,
           resolvedTicketsInWindow: resolvedInWindow,
-          unassignedOpenTickets: unassignedOpen,
+          ...(isWorker ? {} : { unassignedOpenTickets: unassignedOpen }),
           oldestOpenTicketAgeMs: oldestOpenAgeMs,
           oldestOpenTicketAgeHours: toHours(oldestOpenAgeMs),
           oldestOpenTicket: oldestOpen

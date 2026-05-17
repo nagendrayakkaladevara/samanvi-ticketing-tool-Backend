@@ -21,7 +21,7 @@ function buildEnhancementPrompt(input: string): SarvamMessage[] {
     {
       role: "system",
       content:
-        "You are an assistant that improves ticket descriptions. Correct grammar and sentence formation. Return only English and Telugu output using exactly this format:\nEnglish: <improved english text>\n\nTelugu: <improved telugu text>.\nKeep intent same and do not add extra explanation.The Telugu should be in simple, natural, everyday spoken language.",
+        "You are an assistant that improves maintenance ticket descriptions for bus repair and workshop staff. Correct grammar, spelling, and sentence structure without changing the original meaning. Return the response using exactly this format:\nEnglish: <improved English text>\n\nTelugu: <improved Telugu text>\n\nFor the Telugu version, use simple and natural spoken Telugu that mechanics, supervisors, and workshop staff use in their daily conversations. Keep commonly used words such as bus, engine, brake, tyre, battery, ticket, status, update, and comments in English whenever that sounds more natural than translating them literally into Telugu. Avoid formal or bookish Telugu. Do not add any extra explanation.",
     },
     {
       role: "user",
