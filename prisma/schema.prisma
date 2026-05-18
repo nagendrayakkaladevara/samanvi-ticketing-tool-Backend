@@ -45,6 +45,15 @@ enum TicketActivityType {
   closed
 }
 
+enum NotificationType {
+  ticket_created
+  ticket_assigned
+  ticket_status_changed
+  ticket_commented
+  ticket_reopened
+  ticket_closed
+}
+
 model Role {
   id        String    @id @default(cuid())
   code      RoleCode  @unique
@@ -67,6 +76,7 @@ model User {
   assignedTickets    Ticket[]              @relation("TicketAssignedTo")
   assignmentActions  Ticket[]              @relation("TicketAssignedBy")
   activityLogs       TicketActivityLog[]
+  notifications      Notification[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 }
@@ -115,6 +125,7 @@ model Ticket {
   closedAt       DateTime?
   reopenedCount  Int           @default(0)
   activityLogs   TicketActivityLog[]
+  notifications  Notification[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -133,8 +144,27 @@ model TicketActivityLog {
   actionType  TicketActivityType
   fromStatus  TicketStatus?
   toStatus    TicketStatus?
-  note        String?
-  createdAt   DateTime           @default(now())
+  note            String?
+  createdAt       DateTime           @default(now())
+  notifications   Notification[]
 
   @@index([ticketId, createdAt])
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  title          String           @db.VarChar(200)
+  message        String           @db.VarChar(500)
+  ticketId       String
+  ticket         Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  activityLogId  String?
+  activityLog    TicketActivityLog? @relation(fields: [activityLogId], references: [id], onDelete: SetNull)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([ticketId])
 }

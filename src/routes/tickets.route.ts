@@ -1,4 +1,5 @@
 import {
+  NotificationType,
   Prisma,
   RoleCode,
   TicketActivityType,
@@ -13,6 +14,7 @@ import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, forbidden, notFound } from "../core/errors/http-errors";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireFeature } from "../middleware/auth";
+import { dispatchNotifyTicketEvent } from "../services/notification.service";
 
 const isoDateStringSchema = z.string().datetime();
 
@@ -373,10 +375,11 @@ ticketsRouter.post(
 
     const maxCreateAttempts = 3;
     let ticket: TicketRecord | null = null;
+    let createdActivityLogId: string | undefined;
 
     for (let attempt = 1; attempt <= maxCreateAttempts; attempt += 1) {
       try {
-        ticket = await prisma.$transaction(async (tx) => {
+        const createResult = await prisma.$transaction(async (tx) => {
           const busId = await resolveBusIdForTicketCreation(
             tx,
             parsedBody.data.busNumber,
@@ -408,20 +411,28 @@ ticketsRouter.post(
             data: { slaDurationMs },
           });
 
-          await tx.ticketActivityLog.create({
+          const activityLog = await tx.ticketActivityLog.create({
             data: {
               ticketId: createdTicket.id,
               actorUserId,
               actionType: TicketActivityType.created,
               toStatus: TicketStatus.created,
             },
+            select: { id: true },
           });
 
-          return tx.ticket.findUniqueOrThrow({
+          const createdTicketRecord = await tx.ticket.findUniqueOrThrow({
             where: { id: createdTicket.id },
             select: ticketSelect,
           });
+
+          return {
+            ticket: createdTicketRecord,
+            activityLogId: activityLog.id,
+          };
         });
+        ticket = createResult.ticket;
+        createdActivityLogId = createResult.activityLogId;
         break;
       } catch (error) {
         if (isTicketNumberConflictError(error) && attempt < maxCreateAttempts) {
@@ -434,6 +445,13 @@ ticketsRouter.post(
     if (!ticket) {
       throw badRequest("Unable to create ticket at the moment. Please retry.");
     }
+
+    dispatchNotifyTicketEvent({
+      type: NotificationType.ticket_created,
+      ticketId: ticket.id,
+      actorUserId,
+      activityLogId: createdActivityLogId,
+    });
 
     res.status(201).json({
       success: true,
@@ -639,7 +657,7 @@ ticketsRouter.post(
             code: RoleCode.worker,
           },
         },
-        select: { id: true },
+        select: { id: true, displayName: true },
       }),
     ]);
 
@@ -660,7 +678,7 @@ ticketsRouter.post(
         ? TicketStatus.assigned
         : ticket.status;
 
-    await prisma.$transaction([
+    const [, activityLog] = await prisma.$transaction([
       prisma.ticket.update({
         where: { id: ticketId },
         data: {
@@ -679,8 +697,18 @@ ticketsRouter.post(
           toStatus: nextStatus,
           note: parsedBody.data.note,
         },
+        select: { id: true },
       }),
     ]);
+
+    dispatchNotifyTicketEvent({
+      type: NotificationType.ticket_assigned,
+      ticketId,
+      actorUserId: req.user.sub,
+      activityLogId: activityLog.id,
+      note: parsedBody.data.note,
+      assigneeDisplayName: worker.displayName,
+    });
 
     const updatedTicket = await findVisibleTicketOrThrow(ticketId, req.user);
     res.status(200).json({
@@ -749,7 +777,7 @@ ticketsRouter.patch(
     }
 
     const now = new Date();
-    await prisma.$transaction([
+    const [, activityLog] = await prisma.$transaction([
       prisma.ticket.update({
         where: { id: ticketId },
         data: {
@@ -776,8 +804,22 @@ ticketsRouter.patch(
           toStatus: parsedBody.data.status,
           note: parsedBody.data.note,
         },
+        select: { id: true },
       }),
     ]);
+
+    dispatchNotifyTicketEvent({
+      type:
+        parsedBody.data.status === TicketStatus.closed
+          ? NotificationType.ticket_closed
+          : NotificationType.ticket_status_changed,
+      ticketId,
+      actorUserId: req.user.sub,
+      activityLogId: activityLog.id,
+      note: parsedBody.data.note,
+      fromStatus: ticket.status,
+      toStatus: parsedBody.data.status,
+    });
 
     const updatedTicket = await findVisibleTicketOrThrow(ticketId, req.user);
     res.status(200).json({
@@ -847,7 +889,7 @@ ticketsRouter.post(
       reopenedAt,
     });
 
-    await prisma.$transaction([
+    const [, activityLog] = await prisma.$transaction([
       prisma.ticket.update({
         where: { id: ticketId },
         data: {
@@ -868,8 +910,19 @@ ticketsRouter.post(
           toStatus: TicketStatus.reopened,
           note: parsedBody.data.note,
         },
+        select: { id: true },
       }),
     ]);
+
+    dispatchNotifyTicketEvent({
+      type: NotificationType.ticket_reopened,
+      ticketId,
+      actorUserId: req.user.sub,
+      activityLogId: activityLog.id,
+      note: parsedBody.data.note,
+      fromStatus: ticket.status,
+      toStatus: TicketStatus.reopened,
+    });
 
     const updatedTicket = await findVisibleTicketOrThrow(ticketId, req.user);
     res.status(200).json({
@@ -904,6 +957,14 @@ ticketsRouter.post(
         note: parsedBody.data.note,
       },
       select: ticketActivityLogSelect,
+    });
+
+    dispatchNotifyTicketEvent({
+      type: NotificationType.ticket_commented,
+      ticketId,
+      actorUserId: req.user.sub,
+      activityLogId: comment.id,
+      note: parsedBody.data.note,
     });
 
     res.status(201).json({

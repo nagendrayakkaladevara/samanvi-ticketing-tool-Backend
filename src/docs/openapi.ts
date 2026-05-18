@@ -24,6 +24,7 @@ export function buildOpenApiSpec() {
       { name: "Profile" },
       { name: "AI" },
       { name: "Tickets" },
+      { name: "Notifications" },
       { name: "Access Control" },
       { name: "Workers" },
       { name: "Users" },
@@ -491,6 +492,79 @@ export function buildOpenApiSpec() {
             "200": { description: "Ticket reopened" },
             "400": { description: "Invalid transition/payload" },
             "404": { description: "Ticket not found" },
+          },
+        },
+      },
+      "/notifications": {
+        get: {
+          tags: ["Notifications"],
+          summary: "List notifications for the current user (paginated)",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "query",
+              name: "page",
+              required: false,
+              schema: { type: "integer", minimum: 1, default: 1 },
+            },
+            {
+              in: "query",
+              name: "limit",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 50, default: 20 },
+            },
+            {
+              in: "query",
+              name: "unreadOnly",
+              required: false,
+              schema: { type: "string", enum: ["true", "false"] },
+            },
+          ],
+          responses: {
+            "200": { description: "Notifications list with pagination meta" },
+            "401": { description: "Missing/invalid token" },
+          },
+        },
+      },
+      "/notifications/unread-count": {
+        get: {
+          tags: ["Notifications"],
+          summary: "Unread notification count for the current user",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": { description: "Unread count" },
+            "401": { description: "Missing/invalid token" },
+          },
+        },
+      },
+      "/notifications/read-all": {
+        patch: {
+          tags: ["Notifications"],
+          summary: "Mark all notifications as read for the current user",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": { description: "All unread notifications marked read" },
+            "401": { description: "Missing/invalid token" },
+          },
+        },
+      },
+      "/notifications/{notificationId}/read": {
+        patch: {
+          tags: ["Notifications"],
+          summary: "Mark a single notification as read",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "notificationId",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "Notification marked read" },
+            "404": { description: "Notification not found" },
+            "401": { description: "Missing/invalid token" },
           },
         },
       },

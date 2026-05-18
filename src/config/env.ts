@@ -24,6 +24,13 @@ const envSchema = z.object({
     .url()
     .default("https://api.sarvam.ai/v1/chat/completions"),
   SARVAM_MODEL: z.string().trim().min(1).default("sarvam-30b"),
+  SMTP_HOST: z.string().trim().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).optional(),
+  SMTP_SECURE: z.coerce.boolean().optional(),
+  SMTP_USER: z.string().trim().min(1).optional(),
+  SMTP_PASS: z.string().trim().min(1).optional(),
+  EMAIL_FROM: z.string().trim().email().optional(),
+  APP_PUBLIC_URL: z.string().trim().url().optional(),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -51,7 +58,18 @@ export const env = {
   sarvamApiKey: parsedEnv.data.SARVAM_API_KEY,
   sarvamApiUrl: parsedEnv.data.SARVAM_API_URL,
   sarvamModel: parsedEnv.data.SARVAM_MODEL,
+  smtpHost: parsedEnv.data.SMTP_HOST,
+  smtpPort: parsedEnv.data.SMTP_PORT ?? 587,
+  smtpSecure: parsedEnv.data.SMTP_SECURE ?? false,
+  smtpUser: parsedEnv.data.SMTP_USER,
+  smtpPass: parsedEnv.data.SMTP_PASS,
+  emailFrom: parsedEnv.data.EMAIL_FROM,
+  appPublicUrl: parsedEnv.data.APP_PUBLIC_URL,
 } as const;
+
+export function isSmtpConfigured(): boolean {
+  return Boolean(env.smtpHost && env.emailFrom);
+}
 
 export type Env = typeof env;
 
