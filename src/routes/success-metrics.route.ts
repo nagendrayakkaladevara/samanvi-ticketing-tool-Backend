@@ -13,7 +13,7 @@ import { requireAuth, requireFeature } from "../middleware/auth";
  */
 
 const querySchema = z.object({
-  days: z.coerce.number().int().min(1).max(366).default(30),
+  days: z.coerce.number().int().min(0).max(366).default(30),
 });
 
 function startOfUtcDay(d: Date): Date {
@@ -61,7 +61,7 @@ successMetricsRouter.get(
 
     const { days } = parsed.data;
     const now = new Date();
-    const windowStart = addUtcDays(startOfUtcDay(now), -(days - 1));
+    const windowStart = addUtcDays(startOfUtcDay(now), -Math.max(days - 1, 0));
 
     const isWorker = authUser.roleCode === "worker";
 
@@ -173,7 +173,7 @@ successMetricsRouter.get(
           displayName: authUser.displayName,
           resolvedInWindow: resolved,
           resolvedPerDay:
-            Math.round((10000 * resolved) / days) / 10000,
+            Math.round((10000 * resolved) / Math.max(days, 1)) / 10000,
         },
       ];
     } else {
@@ -200,7 +200,7 @@ successMetricsRouter.get(
           displayName: w.displayName,
           resolvedInWindow: resolved,
           resolvedPerDay:
-            Math.round((10000 * resolved) / days) / 10000,
+            Math.round((10000 * resolved) / Math.max(days, 1)) / 10000,
         };
       });
     }

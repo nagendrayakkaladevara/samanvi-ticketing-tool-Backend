@@ -7,7 +7,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireFeature } from "../middleware/auth";
 
 const dashboardQuerySchema = z.object({
-  days: z.coerce.number().int().min(1).max(90).default(14),
+  days: z.coerce.number().int().min(0).max(90).default(14),
 });
 
 function startOfUtcDay(d: Date): Date {
@@ -109,7 +109,7 @@ dashboardRouter.get(
           where: {
             ...baseWhere,
             resolvedAt: {
-              gte: addUtcDays(startOfUtcDay(now), -(days - 1)),
+              gte: addUtcDays(startOfUtcDay(now), -Math.max(days - 1, 0)),
             },
           },
           select: { resolvedAt: true },
@@ -154,8 +154,9 @@ dashboardRouter.get(
         : null;
 
     const resolvedPerDayMap = new Map<string, number>();
-    for (let i = 0; i < days; i++) {
-      const d = addUtcDays(startOfUtcDay(now), -(days - 1 - i));
+    const effectiveDays = Math.max(days, 1);
+    for (let i = 0; i < effectiveDays; i++) {
+      const d = addUtcDays(startOfUtcDay(now), -(effectiveDays - 1 - i));
       resolvedPerDayMap.set(d.toISOString().slice(0, 10), 0);
     }
     for (const t of resolvedForDaily) {
@@ -324,7 +325,7 @@ dashboardRouter.get(
 
     const { days } = parsed.data;
     const now = new Date();
-    const windowStart = addUtcDays(startOfUtcDay(now), -(days - 1));
+    const windowStart = addUtcDays(startOfUtcDay(now), -Math.max(days - 1, 0));
 
     const isWorker = req.user.roleCode === "worker";
     const scopeWhere: Prisma.TicketWhereInput = isWorker

@@ -579,8 +579,8 @@ export function buildOpenApiSpec() {
               in: "query",
               name: "days",
               required: false,
-              schema: { type: "integer", minimum: 1, maximum: 90, default: 14 },
-              description: "Window for resolved-per-day series (UTC dates)",
+              schema: { type: "integer", minimum: 0, maximum: 90, default: 14 },
+              description: "Window for resolved-per-day series (UTC dates); 0 = today only",
             },
           ],
           responses: {
@@ -601,8 +601,8 @@ export function buildOpenApiSpec() {
               in: "query",
               name: "days",
               required: false,
-              schema: { type: "integer", minimum: 1, maximum: 90, default: 14 },
-              description: "Rolling UTC window length used for new/resolved/speed summaries",
+              schema: { type: "integer", minimum: 0, maximum: 90, default: 14 },
+              description: "Rolling UTC window length used for new/resolved/speed summaries; 0 = today only",
             },
           ],
           responses: {
@@ -623,9 +623,9 @@ export function buildOpenApiSpec() {
               in: "query",
               name: "days",
               required: false,
-              schema: { type: "integer", minimum: 1, maximum: 366, default: 30 },
+              schema: { type: "integer", minimum: 0, maximum: 366, default: 30 },
               description:
-                "Rolling UTC window length: resolutions/SLA/efficiency use resolvedAt; repeats use createdAt",
+                "Rolling UTC window length: resolutions/SLA/efficiency use resolvedAt; repeats use createdAt; 0 = today only",
             },
           ],
           responses: {
