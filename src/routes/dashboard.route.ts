@@ -4,21 +4,18 @@ import { z } from "zod";
 import { asyncHandler } from "../core/http/async-handler";
 import { badRequest } from "../core/errors/http-errors";
 import { prisma } from "../lib/prisma";
+import {
+  addUtcDays,
+  buildClosedInWindowWhere,
+  computeUtcWindow,
+  openCreatedInWindowWhere,
+  startOfUtcDay,
+} from "../lib/ticket-window-filters";
 import { requireAuth, requireFeature } from "../middleware/auth";
 
 const dashboardQuerySchema = z.object({
   days: z.coerce.number().int().min(0).max(90).default(14),
 });
-
-function startOfUtcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-function addUtcDays(d: Date, days: number): Date {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + days);
-  return x;
-}
 
 function toHours(valueMs: number | null): number | null {
   if (valueMs === null) return null;
@@ -27,35 +24,6 @@ function toHours(valueMs: number | null): number | null {
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
-}
-
-function utcWindowRange(windowStart: Date, now: Date): Prisma.DateTimeFilter {
-  return { gte: windowStart, lte: now };
-}
-
-/** Open tickets created within the UTC window (excludes older backlog). */
-function openCreatedInWindowWhere(
-  scopeWhere: Prisma.TicketWhereInput,
-  windowRange: Prisma.DateTimeFilter,
-  openStatuses: Prisma.EnumTicketStatusFilter,
-): Prisma.TicketWhereInput {
-  return {
-    ...scopeWhere,
-    status: openStatuses,
-    createdAt: windowRange,
-  };
-}
-
-/** Closed tickets resolved or closed within the UTC window. */
-function buildClosedInWindowWhere(
-  scopeWhere: Prisma.TicketWhereInput,
-  windowRange: Prisma.DateTimeFilter,
-): Prisma.TicketWhereInput {
-  return {
-    ...scopeWhere,
-    status: TicketStatus.closed,
-    OR: [{ closedAt: windowRange }, { resolvedAt: windowRange }],
-  };
 }
 
 const dashboardRouter = Router();
@@ -353,14 +321,12 @@ dashboardRouter.get(
     }
 
     const { days } = parsed.data;
-    const now = new Date();
-    const windowStart = addUtcDays(startOfUtcDay(now), -Math.max(days - 1, 0));
+    const { windowStart, windowRange, now } = computeUtcWindow(days);
 
     const isWorker = req.user.roleCode === "worker";
     const scopeWhere: Prisma.TicketWhereInput = isWorker
       ? { assignedToId: req.user.sub }
       : {};
-    const windowRange = utcWindowRange(windowStart, now);
     const openStatuses = {
       in: [
         TicketStatus.created,

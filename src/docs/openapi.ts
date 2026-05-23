@@ -227,6 +227,14 @@ export function buildOpenApiSpec() {
               required: false,
               schema: { type: "boolean", default: true },
             },
+            {
+              in: "query",
+              name: "days",
+              required: false,
+              schema: { type: "integer", minimum: 0, maximum: 90 },
+              description:
+                "UTC calendar window; only applies when status is also set. Open statuses: created in range and still in that status. resolved: resolvedAt in range. closed: closedAt or resolvedAt in range. Ignored when status is omitted.",
+            },
           ],
           responses: {
             "200": { description: "Tickets list" },
@@ -384,6 +392,57 @@ export function buildOpenApiSpec() {
           tags: ["Tickets"],
           summary: "List my assigned tickets (Worker only)",
           security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "query",
+              name: "status",
+              required: false,
+              schema: {
+                type: "string",
+                enum: [
+                  "created",
+                  "assigned",
+                  "in_progress",
+                  "blocked",
+                  "resolved",
+                  "closed",
+                  "reopened",
+                ],
+              },
+            },
+            {
+              in: "query",
+              name: "severity",
+              required: false,
+              schema: { type: "string", enum: ["critical", "high", "medium", "low"] },
+            },
+            {
+              in: "query",
+              name: "priority",
+              required: false,
+              schema: { type: "string", enum: ["p1", "p2", "p3"] },
+            },
+            {
+              in: "query",
+              name: "categoryId",
+              required: false,
+              schema: { type: "string" },
+            },
+            {
+              in: "query",
+              name: "busId",
+              required: false,
+              schema: { type: "string" },
+            },
+            {
+              in: "query",
+              name: "days",
+              required: false,
+              schema: { type: "integer", minimum: 0, maximum: 90 },
+              description:
+                "UTC calendar window; only applies when status is also set. Open statuses: created in range and still in that status. resolved: resolvedAt in range. closed: closedAt or resolvedAt in range. Ignored when status is omitted.",
+            },
+          ],
           responses: {
             "200": { description: "Assigned tickets list" },
             "403": { description: "Only workers can access this endpoint" },
