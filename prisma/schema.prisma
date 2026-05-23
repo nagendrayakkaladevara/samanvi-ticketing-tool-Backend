@@ -149,6 +149,7 @@ model TicketActivityLog {
   notifications   Notification[]
 
   @@index([ticketId, createdAt])
+  @@index([actorUserId, createdAt(sort: Desc)])
 }
 
 model Notification {

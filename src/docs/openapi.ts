@@ -28,6 +28,7 @@ export function buildOpenApiSpec() {
       { name: "Access Control" },
       { name: "Workers" },
       { name: "Users" },
+      { name: "User History" },
       { name: "Issue Categories" },
       { name: "Buses" },
       { name: "Dashboard" },
@@ -697,6 +698,125 @@ export function buildOpenApiSpec() {
           responses: {
             "200": { description: "Workers list" },
             "403": { description: "Forbidden by role matrix" },
+          },
+        },
+      },
+      "/users/{userId}/tickets": {
+        get: {
+          tags: ["User History"],
+          summary: "List tickets for a user by relation (assigned, created, acted_on)",
+          description:
+            "Use userId `me` for the authenticated user. Workers may only access their own history. Supervisors and admins need view_dashboard to view other users.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "userId",
+              required: true,
+              schema: { type: "string" },
+              description: "User id or `me`",
+            },
+            {
+              in: "query",
+              name: "relation",
+              schema: {
+                type: "string",
+                enum: ["assigned", "created", "acted_on"],
+                default: "assigned",
+              },
+            },
+            { in: "query", name: "status", schema: { type: "string" } },
+            { in: "query", name: "severity", schema: { type: "string" } },
+            { in: "query", name: "priority", schema: { type: "string" } },
+            { in: "query", name: "categoryId", schema: { type: "string" } },
+            { in: "query", name: "busId", schema: { type: "string" } },
+            { in: "query", name: "page", schema: { type: "integer", minimum: 1, default: 1 } },
+            { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          ],
+          responses: {
+            "200": { description: "Paginated ticket list for the user" },
+            "403": { description: "Forbidden" },
+            "404": { description: "User not found" },
+          },
+        },
+      },
+      "/users/{userId}/activity": {
+        get: {
+          tags: ["User History"],
+          summary: "Cross-ticket activity feed for a user",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "userId",
+              required: true,
+              schema: { type: "string" },
+              description: "User id or `me`",
+            },
+            { in: "query", name: "page", schema: { type: "integer", minimum: 1, default: 1 } },
+            { in: "query", name: "limit", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+          ],
+          responses: {
+            "200": { description: "Paginated activity log entries with ticket context" },
+            "403": { description: "Forbidden" },
+            "404": { description: "User not found" },
+          },
+        },
+      },
+      "/users/{userId}/metrics": {
+        get: {
+          tags: ["User History"],
+          summary: "Per-user performance and ticket metrics",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "userId",
+              required: true,
+              schema: { type: "string" },
+              description: "User id or `me`",
+            },
+            {
+              in: "query",
+              name: "days",
+              schema: { type: "integer", minimum: 0, maximum: 90, default: 14 },
+            },
+          ],
+          responses: {
+            "200": { description: "User metrics for assigned, created, and acted-on tickets" },
+            "403": { description: "Forbidden" },
+            "404": { description: "User not found" },
+          },
+        },
+      },
+      "/users/{userId}/history": {
+        get: {
+          tags: ["User History"],
+          summary: "User history summary with counts, metrics, and recent items",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "userId",
+              required: true,
+              schema: { type: "string" },
+              description: "User id or `me`",
+            },
+            {
+              in: "query",
+              name: "days",
+              schema: { type: "integer", minimum: 0, maximum: 90, default: 14 },
+            },
+            {
+              in: "query",
+              name: "recentLimit",
+              schema: { type: "integer", minimum: 1, maximum: 20, default: 5 },
+            },
+          ],
+          responses: {
+            "200": { description: "Aggregated user history snapshot" },
+            "403": { description: "Forbidden" },
+            "404": { description: "User not found" },
           },
         },
       },
