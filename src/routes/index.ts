@@ -13,6 +13,7 @@ import { issueCategoriesRouter } from "./issue-categories.route";
 import { profileRouter } from "./profile.route";
 import { successMetricsRouter } from "./success-metrics.route";
 import { ticketsRouter } from "./tickets.route";
+import { userHistoryRouter } from "./user-history.route";
 import { usersRouter } from "./users.route";
 import { workersRouter } from "./workers.route";
 
@@ -25,6 +26,7 @@ apiRouter.use(aiRouter);
 apiRouter.use(maybeDocsRouter());
 apiRouter.use(issueCategoriesRouter);
 apiRouter.use(busesRouter);
+apiRouter.use(userHistoryRouter);
 apiRouter.use(usersRouter);
 apiRouter.use(ticketsRouter);
 apiRouter.use(notificationsRouter);
