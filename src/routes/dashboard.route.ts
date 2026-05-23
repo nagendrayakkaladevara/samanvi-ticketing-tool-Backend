@@ -29,6 +29,35 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function utcWindowRange(windowStart: Date, now: Date): Prisma.DateTimeFilter {
+  return { gte: windowStart, lte: now };
+}
+
+/** Open tickets created within the UTC window (excludes older backlog). */
+function openCreatedInWindowWhere(
+  scopeWhere: Prisma.TicketWhereInput,
+  windowRange: Prisma.DateTimeFilter,
+  openStatuses: Prisma.EnumTicketStatusFilter,
+): Prisma.TicketWhereInput {
+  return {
+    ...scopeWhere,
+    status: openStatuses,
+    createdAt: windowRange,
+  };
+}
+
+/** Closed tickets resolved or closed within the UTC window. */
+function buildClosedInWindowWhere(
+  scopeWhere: Prisma.TicketWhereInput,
+  windowRange: Prisma.DateTimeFilter,
+): Prisma.TicketWhereInput {
+  return {
+    ...scopeWhere,
+    status: TicketStatus.closed,
+    OR: [{ closedAt: windowRange }, { resolvedAt: windowRange }],
+  };
+}
+
 const dashboardRouter = Router();
 
 dashboardRouter.use(requireAuth, requireFeature("view_dashboard"));
@@ -331,6 +360,7 @@ dashboardRouter.get(
     const scopeWhere: Prisma.TicketWhereInput = isWorker
       ? { assignedToId: req.user.sub }
       : {};
+    const windowRange = utcWindowRange(windowStart, now);
     const openStatuses = {
       in: [
         TicketStatus.created,
@@ -340,6 +370,12 @@ dashboardRouter.get(
         TicketStatus.reopened,
       ],
     } satisfies Prisma.EnumTicketStatusFilter;
+    const openInWindowWhere = openCreatedInWindowWhere(
+      scopeWhere,
+      windowRange,
+      openStatuses,
+    );
+    const closedInWindowWhere = buildClosedInWindowWhere(scopeWhere, windowRange);
 
     const [
       totalOpen,
@@ -358,48 +394,33 @@ dashboardRouter.get(
       resolvedForDuration,
     ] = await Promise.all([
       prisma.ticket.count({
+        where: openInWindowWhere,
+      }),
+      prisma.ticket.count({
+        where: closedInWindowWhere,
+      }),
+      prisma.ticket.count({
         where: {
           ...scopeWhere,
-          status: openStatuses,
+          createdAt: windowRange,
         },
       }),
       prisma.ticket.count({
         where: {
           ...scopeWhere,
-          status: TicketStatus.closed,
-        },
-      }),
-      prisma.ticket.count({
-        where: {
-          ...scopeWhere,
-          createdAt: {
-            gte: windowStart,
-            lte: now,
-          },
-        },
-      }),
-      prisma.ticket.count({
-        where: {
-          ...scopeWhere,
-          resolvedAt: {
-            gte: windowStart,
-            lte: now,
-          },
+          resolvedAt: windowRange,
         },
       }),
       isWorker
         ? Promise.resolve(0)
         : prisma.ticket.count({
             where: {
-              status: openStatuses,
+              ...openCreatedInWindowWhere({}, windowRange, openStatuses),
               assignedToId: null,
             },
           }),
       prisma.ticket.findFirst({
-        where: {
-          ...scopeWhere,
-          status: openStatuses,
-        },
+        where: openInWindowWhere,
         orderBy: {
           createdAt: "asc",
         },
@@ -413,47 +434,35 @@ dashboardRouter.get(
       }),
       prisma.ticket.groupBy({
         by: ["priority"],
-        where: {
-          ...scopeWhere,
-          status: openStatuses,
-        },
+        where: openInWindowWhere,
         _count: true,
       }),
       prisma.ticket.groupBy({
         by: ["status"],
-        where: {
-          ...scopeWhere,
-          status: openStatuses,
-        },
+        where: openInWindowWhere,
         _count: true,
       }),
       prisma.ticket.groupBy({
         by: ["severity"],
-        where: {
-          ...scopeWhere,
-          status: openStatuses,
-        },
+        where: openInWindowWhere,
         _count: true,
       }),
       prisma.ticket.count({
         where: {
-          ...scopeWhere,
-          status: openStatuses,
+          ...openInWindowWhere,
           slaDueAt: { lt: now },
         },
       }),
       prisma.ticket.count({
         where: {
-          ...scopeWhere,
-          status: openStatuses,
+          ...openInWindowWhere,
           slaDueAt: { gte: now, lte: addUtcDays(now, 1) },
         },
       }),
       prisma.ticket.groupBy({
         by: ["assignedToId"],
         where: {
-          ...scopeWhere,
-          status: openStatuses,
+          ...openInWindowWhere,
           assignedToId: { not: null },
         },
         _count: true,
@@ -475,10 +484,7 @@ dashboardRouter.get(
       prisma.ticket.findMany({
         where: {
           ...scopeWhere,
-          resolvedAt: {
-            gte: windowStart,
-            lte: now,
-          },
+          resolvedAt: windowRange,
         },
         select: {
           createdAt: true,
@@ -540,6 +546,11 @@ dashboardRouter.get(
       openByPriorityRows.map((row) => [row.priority, row._count]),
     );
     const statusOpenCounts = {
+      [TicketStatus.created]: 0,
+      [TicketStatus.assigned]: 0,
+      [TicketStatus.in_progress]: 0,
+      [TicketStatus.blocked]: 0,
+      [TicketStatus.reopened]: 0,
       ...Object.fromEntries(
         openByStatusRows.map((row) => [row.status, row._count]),
       ),

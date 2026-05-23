@@ -595,7 +595,7 @@ export function buildOpenApiSpec() {
         get: {
           tags: ["Dashboard"],
           summary:
-            "Admin dashboard summary sections: snapshot, queue, SLA, speed, and agent leaderboard (workers see assigned-to-me scope). For global scope only, snapshot.unassignedOpenTickets and queue.openByStatus.unassigned report open tickets with no assignee (same value in both places). Worker-scoped responses omit these fields.",
+            "Admin dashboard summary for the selected UTC window only (no backlog): snapshot, queue, SLA, speed, and agent leaderboard (workers see assigned-to-me scope). Open/queue/SLA-at-risk counts use tickets created in the window that are still open; closed counts use tickets closed or resolved in the window. queue.openByStatus always includes every open status key (zero when none). agentLeaderboard lists all active workers with zero counts when applicable. Worker-scoped responses omit unassigned fields for non-global scope.",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -603,7 +603,8 @@ export function buildOpenApiSpec() {
               name: "days",
               required: false,
               schema: { type: "integer", minimum: 0, maximum: 90, default: 14 },
-              description: "Rolling UTC window length used for new/resolved/speed summaries; 0 = today only",
+              description:
+                "Rolling UTC calendar window for all summary sections; 0 = today only. Open metrics: created in range and still open. Closed/resolved metrics: closedAt or resolvedAt in range. No pre-window backlog.",
             },
           ],
           responses: {
