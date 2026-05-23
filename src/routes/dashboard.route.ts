@@ -4,21 +4,18 @@ import { z } from "zod";
 import { asyncHandler } from "../core/http/async-handler";
 import { badRequest } from "../core/errors/http-errors";
 import { prisma } from "../lib/prisma";
+import {
+  addUtcDays,
+  buildClosedInWindowWhere,
+  computeUtcWindow,
+  openCreatedInWindowWhere,
+  startOfUtcDay,
+} from "../lib/ticket-window-filters";
 import { requireAuth, requireFeature } from "../middleware/auth";
 
 const dashboardQuerySchema = z.object({
   days: z.coerce.number().int().min(0).max(90).default(14),
 });
-
-function startOfUtcDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-}
-
-function addUtcDays(d: Date, days: number): Date {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + days);
-  return x;
-}
 
 function toHours(valueMs: number | null): number | null {
   if (valueMs === null) return null;
@@ -353,8 +350,7 @@ dashboardRouter.get(
     }
 
     const { days } = parsed.data;
-    const now = new Date();
-    const windowStart = addUtcDays(startOfUtcDay(now), -Math.max(days - 1, 0));
+    const { windowStart, windowRange, now } = computeUtcWindow(days);
 
     const isWorker = req.user.roleCode === "worker";
     const scopeWhere: Prisma.TicketWhereInput = isWorker

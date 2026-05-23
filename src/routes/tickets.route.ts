@@ -13,6 +13,10 @@ import type { AccessTokenPayload } from "../auth/auth.service";
 import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, forbidden, notFound } from "../core/errors/http-errors";
 import { prisma } from "../lib/prisma";
+import {
+  buildTicketListStatusDaysWhere,
+  computeUtcWindow,
+} from "../lib/ticket-window-filters";
 import { requireAuth, requireFeature } from "../middleware/auth";
 import { dispatchNotifyTicketEvent } from "../services/notification.service";
 
@@ -36,6 +40,7 @@ const ticketListQuerySchema = z.object({
   busId: z.string().trim().min(1).optional(),
   assignedToId: z.string().trim().min(1).optional(),
   includeUnassigned: z.coerce.boolean().default(true),
+  days: z.coerce.number().int().min(0).max(90).optional(),
 });
 
 const ticketNumberSearchQuerySchema = z.object({
@@ -309,6 +314,43 @@ function toTicketListWithOverdue(
   return tickets.map((ticket) => toTicketWithOverdue(ticket, now));
 }
 
+function buildTicketListFilters(
+  parsed: z.infer<typeof ticketListQuerySchema>,
+): Prisma.TicketWhereInput {
+  return {
+    ...(parsed.severity ? { severity: parsed.severity } : {}),
+    ...(parsed.priority ? { priority: parsed.priority } : {}),
+    ...(parsed.categoryId ? { categoryId: parsed.categoryId } : {}),
+    ...(parsed.busId ? { busId: parsed.busId } : {}),
+  };
+}
+
+function buildTicketListWhere(
+  parsed: z.infer<typeof ticketListQuerySchema>,
+  baseScope: Prisma.TicketWhereInput,
+): Prisma.TicketWhereInput {
+  const where: Prisma.TicketWhereInput = {
+    ...baseScope,
+    ...buildTicketListFilters(parsed),
+  };
+
+  if (!parsed.status) {
+    return where;
+  }
+
+  where.status = parsed.status;
+
+  if (parsed.days === undefined) {
+    return where;
+  }
+
+  const { windowRange } = computeUtcWindow(parsed.days);
+  return {
+    ...where,
+    ...buildTicketListStatusDaysWhere(parsed.status, windowRange),
+  };
+}
+
 async function resolveBusIdForTicketCreation(
   tx: Prisma.TransactionClient,
   busNumberInput: string,
@@ -475,23 +517,17 @@ ticketsRouter.get(
     }
 
     const isWorker = req.user.roleCode === "worker";
-    const where: Prisma.TicketWhereInput = {
-      ...(parsedQuery.data.status ? { status: parsedQuery.data.status } : {}),
-      ...(parsedQuery.data.severity ? { severity: parsedQuery.data.severity } : {}),
-      ...(parsedQuery.data.priority ? { priority: parsedQuery.data.priority } : {}),
-      ...(parsedQuery.data.categoryId
-        ? { categoryId: parsedQuery.data.categoryId }
-        : {}),
-      ...(parsedQuery.data.busId ? { busId: parsedQuery.data.busId } : {}),
-    };
+    const baseScope: Prisma.TicketWhereInput = {};
 
     if (isWorker) {
-      where.assignedToId = req.user.sub;
+      baseScope.assignedToId = req.user.sub;
     } else if (parsedQuery.data.assignedToId) {
-      where.assignedToId = parsedQuery.data.assignedToId;
+      baseScope.assignedToId = parsedQuery.data.assignedToId;
     } else if (!parsedQuery.data.includeUnassigned) {
-      where.assignedToId = { not: null };
+      baseScope.assignedToId = { not: null };
     }
+
+    const where = buildTicketListWhere(parsedQuery.data, baseScope);
 
     const tickets = await prisma.ticket.findMany({
       where,
@@ -528,16 +564,9 @@ ticketsRouter.get(
       });
     }
 
-    const where: Prisma.TicketWhereInput = {
+    const where = buildTicketListWhere(parsedQuery.data, {
       assignedToId: req.user.sub,
-      ...(parsedQuery.data.status ? { status: parsedQuery.data.status } : {}),
-      ...(parsedQuery.data.severity ? { severity: parsedQuery.data.severity } : {}),
-      ...(parsedQuery.data.priority ? { priority: parsedQuery.data.priority } : {}),
-      ...(parsedQuery.data.categoryId
-        ? { categoryId: parsedQuery.data.categoryId }
-        : {}),
-      ...(parsedQuery.data.busId ? { busId: parsedQuery.data.busId } : {}),
-    };
+    });
 
     const tickets = await prisma.ticket.findMany({
       where,
