@@ -535,9 +535,6 @@ dashboardRouter.get(
         openAssignedCount: openByWorkerMap.get(worker.id) ?? 0,
         resolvedInWindow: resolvedByWorkerMap.get(worker.id) ?? 0,
       }))
-      .filter(
-        (worker) => worker.openAssignedCount > 0 || worker.resolvedInWindow > 0,
-      )
       .sort(
         (a, b) =>
           b.resolvedInWindow - a.resolvedInWindow ||
@@ -549,6 +546,11 @@ dashboardRouter.get(
       openByPriorityRows.map((row) => [row.priority, row._count]),
     );
     const statusOpenCounts = {
+      [TicketStatus.created]: 0,
+      [TicketStatus.assigned]: 0,
+      [TicketStatus.in_progress]: 0,
+      [TicketStatus.blocked]: 0,
+      [TicketStatus.reopened]: 0,
       ...Object.fromEntries(
         openByStatusRows.map((row) => [row.status, row._count]),
       ),

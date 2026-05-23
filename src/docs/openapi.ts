@@ -595,7 +595,7 @@ export function buildOpenApiSpec() {
         get: {
           tags: ["Dashboard"],
           summary:
-            "Admin dashboard summary for the selected UTC window only (no backlog): snapshot, queue, SLA, speed, and agent leaderboard (workers see assigned-to-me scope). Open/queue/SLA-at-risk counts use tickets created in the window that are still open; closed counts use tickets closed or resolved in the window; leaderboard lists only agents with activity in the window. Worker-scoped responses omit unassigned fields for non-global scope.",
+            "Admin dashboard summary for the selected UTC window only (no backlog): snapshot, queue, SLA, speed, and agent leaderboard (workers see assigned-to-me scope). Open/queue/SLA-at-risk counts use tickets created in the window that are still open; closed counts use tickets closed or resolved in the window. queue.openByStatus always includes every open status key (zero when none). agentLeaderboard lists all active workers with zero counts when applicable. Worker-scoped responses omit unassigned fields for non-global scope.",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
