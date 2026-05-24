@@ -81,13 +81,157 @@ model User {
   updatedAt          DateTime              @updatedAt
 }
 
+model ServiceFor {
+  id              String          @id @default(cuid())
+  serviceFor      String          @unique @db.VarChar(120)
+  serviceNumbers  ServiceNumber[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
 model Bus {
-  id                  String   @id @default(cuid())
-  busNumber           String   @unique @db.VarChar(50)
-  lastMaintenanceDate DateTime?
-  tickets             Ticket[]
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                        String      @id @default(cuid())
+  busNumber                 String      @unique @db.VarChar(50)
+  engineNumber              String      @db.VarChar(80)
+  chassisNumber             String      @db.VarChar(80)
+  purchaseDate              DateTime?
+  odometer                  Int
+  insuranceValidity         DateTime
+  pollutionValidity         DateTime?
+  fcValidity                DateTime?
+  basePermitValidity        DateTime?
+  homeTaxValidity           DateTime?
+  aitpValidity              DateTime?
+  aitpAuthorizationValidity DateTime?
+  serviceOutDate            DateTime?
+  remarks                   String?     @db.VarChar(500)
+  lastMaintenanceDate       DateTime?
+  tickets                   Ticket[]
+  spareTanks                SpareTank[]
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
+}
+
+model SpareTank {
+  id        String   @id @default(cuid())
+  busId     String
+  bus       Bus      @relation(fields: [busId], references: [id], onDelete: Restrict)
+  ownerName String   @db.VarChar(120)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([busId])
+}
+
+model ServiceNumber {
+  id              String     @id @default(cuid())
+  serviceForId    String
+  serviceFor      ServiceFor @relation(fields: [serviceForId], references: [id], onDelete: Restrict)
+  serviceNo       String     @unique @db.VarChar(50)
+  from            String     @db.VarChar(120)
+  to              String     @db.VarChar(120)
+  via             String     @db.VarChar(120)
+  parkingAmount   Decimal    @db.Decimal(12, 2)
+  driverOneBeta   Decimal    @db.Decimal(12, 2)
+  driverTwoBeta   Decimal    @db.Decimal(12, 2)
+  helperBeta      Decimal    @db.Decimal(12, 2)
+  conductorBeta   Decimal    @db.Decimal(12, 2)
+  distance        Decimal    @db.Decimal(12, 2)
+  optDriver       String     @db.VarChar(120)
+  optHelper       String     @db.VarChar(120)
+  remarks         String     @db.VarChar(500)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([serviceForId])
+}
+
+model Driver {
+  id                   String    @id @default(cuid())
+  driverIdNumber       String    @unique @db.VarChar(10)
+  aadharName           String    @db.VarChar(120)
+  dlName               String    @db.VarChar(120)
+  dateOfBirth          DateTime
+  mobileNumber         String    @db.VarChar(10)
+  alternateMobile      String?   @db.VarChar(10)
+  emergencyNumber      String?   @db.VarChar(10)
+  aadharNumber         String    @unique @db.VarChar(12)
+  dlNumber             String    @unique @db.VarChar(30)
+  accountHolderName    String    @db.VarChar(120)
+  accountNumber        String    @db.VarChar(30)
+  bankName             String    @db.VarChar(120)
+  branchName           String    @db.VarChar(120)
+  ifscCode             String    @db.VarChar(11)
+  upiId                String?   @db.VarChar(120)
+  dlIssueDate          DateTime
+  dlExpiryDate         DateTime
+  transportIssueDate   DateTime
+  transportValidFrom   DateTime
+  transportValidTo     DateTime
+  dateOfJoining        DateTime
+  dateOfLeaving        DateTime?
+  referenceName        String    @db.VarChar(120)
+  remarks              String?   @db.VarChar(500)
+  aadharCardFront      Bytes
+  aadharCardBack       Bytes
+  dlFront              Bytes
+  dlBack               Bytes
+  upiScanner           Bytes?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Helper {
+  id                String    @id @default(cuid())
+  helperIdNumber    String    @unique @db.VarChar(10)
+  nickName          String    @db.VarChar(120)
+  aadharName        String    @db.VarChar(120)
+  mobileNumber      String    @db.VarChar(10)
+  alternateNumber   String?   @db.VarChar(10)
+  emergencyMobile   String?   @db.VarChar(10)
+  aadharNumber      String    @unique @db.VarChar(12)
+  reference         String    @db.VarChar(120)
+  accountHolderName String    @db.VarChar(120)
+  accountNumber     String    @db.VarChar(30)
+  bankName          String    @db.VarChar(120)
+  branchName        String    @db.VarChar(120)
+  ifscCode          String    @db.VarChar(11)
+  upiId             String?   @db.VarChar(120)
+  dateOfJoining     DateTime
+  dateOfLeaving     DateTime?
+  remarks           String?   @db.VarChar(500)
+  aadharCardFront   Bytes
+  aadharCardBack    Bytes
+  upiScanner        Bytes?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model OfficeStaff {
+  id                String    @id @default(cuid())
+  staffIdNumber     String    @unique @db.VarChar(10)
+  designation       String    @db.VarChar(120)
+  nickName          String    @db.VarChar(120)
+  aadharName        String    @db.VarChar(120)
+  mobileNumber      String    @db.VarChar(10)
+  alternativeMobile String?   @db.VarChar(10)
+  emergencyContact  String?   @db.VarChar(10)
+  aadharNumber      String    @unique @db.VarChar(12)
+  referenceName     String    @db.VarChar(120)
+  accountHolderName String    @db.VarChar(120)
+  accountNumber     String    @db.VarChar(30)
+  bankName          String    @db.VarChar(120)
+  branchName        String    @db.VarChar(120)
+  ifscCode          String    @db.VarChar(11)
+  upiId             String?   @db.VarChar(120)
+  dateOfJoining     DateTime
+  dateOfLeaving     DateTime?
+  remarks           String?   @db.VarChar(500)
+  aadharCardFront   Bytes
+  aadharCardBack    Bytes
+  upiScanner        Bytes?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model IssueCategory {
