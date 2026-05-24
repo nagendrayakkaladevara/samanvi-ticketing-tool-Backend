@@ -14,8 +14,8 @@ import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, forbidden, notFound } from "../core/errors/http-errors";
 import { prisma } from "../lib/prisma";
 import {
-  buildTicketListStatusDaysWhere,
-  computeUtcWindow,
+  buildTicketListStatusWhere,
+  TICKET_LIST_AGGREGATE_STATUSES,
 } from "../lib/ticket-window-filters";
 import { requireAuth, requireFeature } from "../middleware/auth";
 import { dispatchNotifyTicketEvent } from "../services/notification.service";
@@ -32,8 +32,13 @@ const createTicketSchema = z.object({
   slaDueAt: isoDateStringSchema,
 });
 
+const ticketListStatusSchema = z.union([
+  z.nativeEnum(TicketStatus),
+  z.enum(TICKET_LIST_AGGREGATE_STATUSES),
+]);
+
 const ticketListQuerySchema = z.object({
-  status: z.nativeEnum(TicketStatus).optional(),
+  status: ticketListStatusSchema.optional(),
   severity: z.nativeEnum(TicketSeverity).optional(),
   priority: z.nativeEnum(TicketPriority).optional(),
   categoryId: z.string().trim().min(1).optional(),
@@ -338,17 +343,9 @@ function buildTicketListWhere(
     return where;
   }
 
-  where.status = parsed.status;
-
-  if (parsed.days === undefined) {
-    return where;
-  }
-
-  const { windowRange } = computeUtcWindow(parsed.days);
-  return {
-    ...where,
-    ...buildTicketListStatusDaysWhere(parsed.status, windowRange),
-  };
+  return buildTicketListStatusWhere(parsed.status, where, {
+    days: parsed.days,
+  });
 }
 
 async function resolveBusIdForTicketCreation(

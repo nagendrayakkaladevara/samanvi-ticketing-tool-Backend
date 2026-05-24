@@ -32,8 +32,36 @@ const OPEN_STATUSES = [
   TicketStatus.reopened,
 ] as const;
 
+export const TICKET_LIST_AGGREGATE_STATUSES = [
+  "open",
+  "closed",
+  "unassigned",
+  "overdue",
+  "at_risk",
+] as const;
+
+export type TicketListAggregateStatus = (typeof TICKET_LIST_AGGREGATE_STATUSES)[number];
+
+export type TicketListStatusFilter = TicketStatus | TicketListAggregateStatus;
+
 function isOpenStatus(status: TicketStatus): status is (typeof OPEN_STATUSES)[number] {
   return (OPEN_STATUSES as readonly TicketStatus[]).includes(status);
+}
+
+export function openTicketStatusesFilter(): Prisma.EnumTicketStatusFilter {
+  return { in: [...OPEN_STATUSES] };
+}
+
+function openTicketsWhere(
+  scopeWhere: Prisma.TicketWhereInput,
+  windowRange?: Prisma.DateTimeFilter,
+): Prisma.TicketWhereInput {
+  const openStatuses = openTicketStatusesFilter();
+  if (!windowRange) {
+    return { ...scopeWhere, status: openStatuses };
+  }
+
+  return openCreatedInWindowWhere(scopeWhere, windowRange, openStatuses);
 }
 
 /** Open tickets created within the UTC window (excludes older backlog). */
@@ -85,4 +113,55 @@ export function buildTicketListStatusDaysWhere(
   }
 
   return { status };
+}
+
+/** Ticket list filter for `status` query param (single status or dashboard aggregate). */
+export function buildTicketListStatusWhere(
+  status: TicketListStatusFilter,
+  scopeWhere: Prisma.TicketWhereInput,
+  options?: { days?: number; now?: Date },
+): Prisma.TicketWhereInput {
+  const now = options?.now ?? new Date();
+  const windowRange =
+    options?.days !== undefined
+      ? computeUtcWindow(options.days, now).windowRange
+      : undefined;
+
+  switch (status) {
+    case "open":
+      return openTicketsWhere(scopeWhere, windowRange);
+
+    case "closed":
+      if (windowRange) {
+        return buildClosedInWindowWhere(scopeWhere, windowRange);
+      }
+      return { ...scopeWhere, status: TicketStatus.closed };
+
+    case "unassigned":
+      return {
+        ...openTicketsWhere(scopeWhere, windowRange),
+        assignedToId: null,
+      };
+
+    case "overdue":
+      return {
+        ...openTicketsWhere(scopeWhere, windowRange),
+        slaDueAt: { lt: now },
+      };
+
+    case "at_risk":
+      return {
+        ...openTicketsWhere(scopeWhere, windowRange),
+        slaDueAt: { gte: now, lte: addUtcDays(now, 1) },
+      };
+
+    default:
+      if (windowRange) {
+        return {
+          ...scopeWhere,
+          ...buildTicketListStatusDaysWhere(status, windowRange),
+        };
+      }
+      return { ...scopeWhere, status };
+  }
 }

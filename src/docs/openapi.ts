@@ -1,4 +1,22 @@
+import { TicketStatus } from "@prisma/client";
 import { env } from "../config/env";
+import { TICKET_LIST_AGGREGATE_STATUSES } from "../lib/ticket-window-filters";
+
+const ticketListStatusQueryEnum = [
+  ...TICKET_LIST_AGGREGATE_STATUSES,
+  TicketStatus.created,
+  TicketStatus.assigned,
+  TicketStatus.in_progress,
+  TicketStatus.blocked,
+  TicketStatus.resolved,
+  TicketStatus.reopened,
+] as const;
+
+const ticketListStatusQueryDescription =
+  "Aggregate filters: open, closed, unassigned, overdue, at_risk (aligned with dashboard). Other values match a single ticket status. Combine with days for UTC window filtering.";
+
+const ticketListDaysQueryDescription =
+  "UTC calendar window; only applies when status is also set. open/unassigned/overdue/at_risk: open tickets created in range. closed: closedAt or resolvedAt in range. Single open status: created in range. resolved: resolvedAt in range. Ignored when status is omitted.";
 
 export function buildOpenApiSpec() {
   return {
@@ -180,16 +198,9 @@ export function buildOpenApiSpec() {
               required: false,
               schema: {
                 type: "string",
-                enum: [
-                  "created",
-                  "assigned",
-                  "in_progress",
-                  "blocked",
-                  "resolved",
-                  "closed",
-                  "reopened",
-                ],
+                enum: [...ticketListStatusQueryEnum],
               },
+              description: ticketListStatusQueryDescription,
             },
             {
               in: "query",
@@ -232,8 +243,7 @@ export function buildOpenApiSpec() {
               name: "days",
               required: false,
               schema: { type: "integer", minimum: 0, maximum: 90 },
-              description:
-                "UTC calendar window; only applies when status is also set. Open statuses: created in range and still in that status. resolved: resolvedAt in range. closed: closedAt or resolvedAt in range. Ignored when status is omitted.",
+              description: ticketListDaysQueryDescription,
             },
           ],
           responses: {
@@ -399,16 +409,9 @@ export function buildOpenApiSpec() {
               required: false,
               schema: {
                 type: "string",
-                enum: [
-                  "created",
-                  "assigned",
-                  "in_progress",
-                  "blocked",
-                  "resolved",
-                  "closed",
-                  "reopened",
-                ],
+                enum: [...ticketListStatusQueryEnum],
               },
+              description: ticketListStatusQueryDescription,
             },
             {
               in: "query",
@@ -439,8 +442,7 @@ export function buildOpenApiSpec() {
               name: "days",
               required: false,
               schema: { type: "integer", minimum: 0, maximum: 90 },
-              description:
-                "UTC calendar window; only applies when status is also set. Open statuses: created in range and still in that status. resolved: resolvedAt in range. closed: closedAt or resolvedAt in range. Ignored when status is omitted.",
+              description: ticketListDaysQueryDescription,
             },
           ],
           responses: {

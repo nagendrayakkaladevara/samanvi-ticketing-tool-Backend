@@ -26,35 +26,6 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function utcWindowRange(windowStart: Date, now: Date): Prisma.DateTimeFilter {
-  return { gte: windowStart, lte: now };
-}
-
-/** Open tickets created within the UTC window (excludes older backlog). */
-function openCreatedInWindowWhere(
-  scopeWhere: Prisma.TicketWhereInput,
-  windowRange: Prisma.DateTimeFilter,
-  openStatuses: Prisma.EnumTicketStatusFilter,
-): Prisma.TicketWhereInput {
-  return {
-    ...scopeWhere,
-    status: openStatuses,
-    createdAt: windowRange,
-  };
-}
-
-/** Closed tickets resolved or closed within the UTC window. */
-function buildClosedInWindowWhere(
-  scopeWhere: Prisma.TicketWhereInput,
-  windowRange: Prisma.DateTimeFilter,
-): Prisma.TicketWhereInput {
-  return {
-    ...scopeWhere,
-    status: TicketStatus.closed,
-    OR: [{ closedAt: windowRange }, { resolvedAt: windowRange }],
-  };
-}
-
 const dashboardRouter = Router();
 
 dashboardRouter.use(requireAuth, requireFeature("view_dashboard"));
@@ -356,7 +327,6 @@ dashboardRouter.get(
     const scopeWhere: Prisma.TicketWhereInput = isWorker
       ? { assignedToId: req.user.sub }
       : {};
-    const windowRange = utcWindowRange(windowStart, now);
     const openStatuses = {
       in: [
         TicketStatus.created,
