@@ -55,13 +55,28 @@ accessControlRouter.post(
   },
 );
 
-accessControlRouter.post("/buses", requireFeature("manage_buses"), (_req, res) => {
+accessControlRouter.post(
+  "/master/buses",
+  requireFeature("manage_buses"),
+  (_req, res) => {
   res.status(200).json({
     success: true,
     data: {
       message: "Allowed to manage buses",
     },
   });
-});
+  },
+);
+
+accessControlRouter.post(
+  "/master/service-for",
+  requireFeature("manage_master"),
+  (_req, res) => {
+    res.status(200).json({
+      success: true,
+      data: { message: "Allowed to manage master data" },
+    });
+  },
+);
 
 export { accessControlRouter };

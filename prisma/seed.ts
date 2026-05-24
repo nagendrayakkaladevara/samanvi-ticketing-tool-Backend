@@ -18,6 +18,25 @@ const adapter = new PrismaPg(
 
 const prisma = new PrismaClient({ adapter });
 
+const BUS_COUNT = 20;
+const TICKET_COUNT = 60;
+const HISTORY_DAYS = 90;
+
+function mulberry32(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+function pickAt<T>(items: readonly T[], index: number): T {
+  return items[index % items.length]!;
+}
+
 async function main() {
   const roles: Array<{ code: RoleCode; label: string }> = [
     { code: RoleCode.admin, label: "Admin" },
@@ -46,7 +65,7 @@ async function main() {
   });
   const roleIdByCode = new Map(roleRows.map((row) => [row.code, row.id]));
 
-  // Clear existing transactional and master data before creating a fresh dataset.
+  await prisma.notification.deleteMany({});
   await prisma.ticketActivityLog.deleteMany({});
   await prisma.ticket.deleteMany({});
   await prisma.bus.deleteMany({});
@@ -98,22 +117,24 @@ async function main() {
     });
   }
 
-  const seedBuses = [
-    { busNumber: "BUS-1001", lastMaintenanceDate: new Date("2026-04-01T08:00:00.000Z") },
-    { busNumber: "BUS-1002", lastMaintenanceDate: new Date("2026-04-15T14:30:00.000Z") },
-    { busNumber: "BUS-2003", lastMaintenanceDate: null },
-    { busNumber: "BUS-2004", lastMaintenanceDate: new Date("2026-03-20T11:00:00.000Z") },
-    { busNumber: "BUS-3005", lastMaintenanceDate: new Date("2026-05-01T09:00:00.000Z") },
-  ] as const;
+  const seedBuses = Array.from({ length: BUS_COUNT }, (_, index) => {
+    const fleet = Math.floor(index / 10) + 1;
+    const unit = (index % 10) + 1;
+    const busNumber = `BUS-${fleet}${String(unit).padStart(3, "0")}`;
+    const rand = mulberry32(index + 17);
+    const hasMaintenance = rand() > 0.2;
+    const daysAgo = Math.floor(rand() * 120);
+    return {
+      busNumber,
+      engineNumber: `ENG-${String(index + 1).padStart(4, "0")}`,
+      chassisNumber: `CHS-${String(index + 1).padStart(4, "0")}`,
+      odometer: 50_000 + index * 1_000,
+      insuranceValidity: new Date(Date.now() + 365 * 86_400_000),
+      lastMaintenanceDate: hasMaintenance ? new Date(Date.now() - daysAgo * 86_400_000) : null,
+    };
+  });
 
-  for (const bus of seedBuses) {
-    await prisma.bus.create({
-      data: {
-        busNumber: bus.busNumber,
-        lastMaintenanceDate: bus.lastMaintenanceDate,
-      },
-    });
-  }
+  await prisma.bus.createMany({ data: seedBuses });
 
   const users = await prisma.user.findMany({
     select: { id: true, username: true, role: { select: { code: true } } },
@@ -131,16 +152,16 @@ async function main() {
     where: { name: { in: [...defaultCategories] } },
     select: { id: true, name: true },
   });
-  const categoryIdByName = new Map(categoryMap.map((c) => [c.name, c.id]));
+  const categoryNames = categoryMap.map((c) => c.name);
 
   const busMap = await prisma.bus.findMany({
-    where: { busNumber: { in: seedBuses.map((b) => b.busNumber) } },
     select: { id: true, busNumber: true },
+    orderBy: { busNumber: "asc" },
   });
-  const busIdByNumber = new Map(busMap.map((b) => [b.busNumber, b.id]));
 
   const dayMs = 86_400_000;
-  const sla48h = BigInt(48 * dayMs);
+  const sla48h = BigInt(48 * 60 * 60_000);
+  const now = Date.now();
   const statuses: TicketStatus[] = [
     TicketStatus.created,
     TicketStatus.assigned,
@@ -157,59 +178,67 @@ async function main() {
     TicketSeverity.low,
   ];
   const priorities: TicketPriority[] = [TicketPriority.p1, TicketPriority.p2, TicketPriority.p3];
-  const busNumbers = seedBuses.map((bus) => bus.busNumber);
-  const categoryNames = [...defaultCategories];
 
-  for (let i = 0; i < 20; i += 1) {
-    const busNumber = busNumbers[i % busNumbers.length];
-    const categoryName = categoryNames[i % categoryNames.length];
-    const supervisor = supervisors[i % supervisors.length];
-    const worker = workers[i % workers.length];
-    const status = statuses[i % statuses.length];
-    const severity = severities[i % severities.length];
-    const priority = priorities[i % priorities.length];
+  const tickets = Array.from({ length: TICKET_COUNT }, (_, i) => {
+    const rand = mulberry32(i + 101);
+    const bus = pickAt(busMap, i);
+    const category = pickAt(categoryMap, i + 3);
+    const supervisor = pickAt(supervisors, i);
+    const worker = pickAt(workers, i);
+    const status = pickAt(statuses, i);
+    const severity = pickAt(severities, i + 2);
+    const priority = pickAt(priorities, i + 1);
 
-    const categoryId = categoryIdByName.get(categoryName);
-    const busId = busIdByNumber.get(busNumber);
-    if (!categoryId || !busId) {
-      throw new Error(`Missing category or bus for generated ticket ${i + 1}`);
-    }
+    const ageDays = Math.floor(rand() * (HISTORY_DAYS + 1));
+    const ageHours = Math.floor(rand() * 24);
+    const createdAt = new Date(now - ageDays * dayMs - ageHours * 3_600_000);
 
-    const createdAt = new Date(Date.now() - (20 - i) * 6 * 60 * 60_000);
     const assigned = status !== TicketStatus.created;
     const completed = status === TicketStatus.resolved || status === TicketStatus.closed;
     const closed = status === TicketStatus.closed;
     const reopenedCount = status === TicketStatus.reopened ? 1 : 0;
 
-    await prisma.ticket.create({
-      data: {
-        ticketNumber: 1001 + i,
-        title: `${categoryName} issue on ${busNumber}`,
-        description: `Maintenance ticket for ${busNumber} — ${categoryName} category.`,
-        status,
-        severity,
-        priority,
-        busId,
-        categoryId,
-        createdById: i % 4 === 0 ? admins[0]!.id : supervisor.id,
-        assignedToId: assigned ? worker.id : null,
-        assignedById: assigned ? supervisor.id : null,
-        assignedAt: assigned ? new Date(createdAt.getTime() + 30 * 60_000) : null,
-        slaDueAt: new Date(createdAt.getTime() + 48 * 60 * 60_000),
-        slaDurationMs: sla48h,
-        resolvedAt: completed ? new Date(createdAt.getTime() + 10 * 60 * 60_000) : null,
-        closedAt: closed ? new Date(createdAt.getTime() + 12 * 60 * 60_000) : null,
-        reopenedCount,
-        createdAt,
-      },
-    });
-  }
+    const isOpen = !closed && status !== TicketStatus.resolved;
+    const makeOverdue = isOpen && i % 10 < 3;
+    const slaDueAt = makeOverdue
+      ? new Date(createdAt.getTime() + Math.floor(rand() * 12) * 3_600_000)
+      : new Date(createdAt.getTime() + 48 * 60 * 60_000);
+
+    return {
+      ticketNumber: 1001 + i,
+      title: `${category.name} issue on ${bus.busNumber}`.slice(0, 160),
+      description: `Maintenance ticket for ${bus.busNumber} — ${category.name} category.`,
+      status,
+      severity,
+      priority,
+      busId: bus.id,
+      categoryId: category.id,
+      createdById: i % 5 === 0 ? admins[0]!.id : supervisor.id,
+      assignedToId: assigned ? worker.id : null,
+      assignedById: assigned ? supervisor.id : null,
+      assignedAt: assigned
+        ? new Date(createdAt.getTime() + Math.floor(rand() * 6 + 1) * 3_600_000)
+        : null,
+      slaDueAt,
+      slaDurationMs: sla48h,
+      resolvedAt: completed
+        ? new Date(createdAt.getTime() + Math.floor(rand() * 36 + 4) * 3_600_000)
+        : null,
+      closedAt: closed
+        ? new Date(createdAt.getTime() + Math.floor(rand() * 48 + 12) * 3_600_000)
+        : null,
+      reopenedCount,
+      createdAt,
+    };
+  });
+
+  await prisma.ticket.createMany({ data: tickets });
 
   console.log("Seeded default roles:", roles.map((role) => role.code).join(", "));
   console.log("Seeded users:", defaultUsers.map((user) => user.username).join(", "));
   console.log("Seeded default issue categories:", defaultCategories.join(", "));
-  console.log("Seeded buses:", seedBuses.map((b) => b.busNumber).join(", "));
-  console.log("Seeded 20 tickets.");
+  console.log(`Seeded ${BUS_COUNT} buses.`);
+  console.log(`Seeded ${TICKET_COUNT} tickets (spread over ${HISTORY_DAYS} days).`);
 }
 
 main()
@@ -220,4 +249,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

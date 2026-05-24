@@ -49,6 +49,13 @@ export function buildOpenApiSpec() {
       { name: "User History" },
       { name: "Issue Categories" },
       { name: "Buses" },
+      { name: "Master" },
+      { name: "Master - Service For" },
+      { name: "Master - Spare Tanks" },
+      { name: "Master - Service Numbers" },
+      { name: "Master - Drivers" },
+      { name: "Master - Helpers" },
+      { name: "Master - Office Staff" },
       { name: "Dashboard" },
       { name: "Metrics" },
     ],
@@ -245,9 +252,21 @@ export function buildOpenApiSpec() {
               schema: { type: "integer", minimum: 0, maximum: 90 },
               description: ticketListDaysQueryDescription,
             },
+            {
+              in: "query",
+              name: "page",
+              required: false,
+              schema: { type: "integer", minimum: 1, default: 1 },
+            },
+            {
+              in: "query",
+              name: "limit",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+            },
           ],
           responses: {
-            "200": { description: "Tickets list" },
+            "200": { description: "Paginated tickets list" },
             "401": { description: "Missing/invalid token" },
           },
         },
@@ -444,9 +463,21 @@ export function buildOpenApiSpec() {
               schema: { type: "integer", minimum: 0, maximum: 90 },
               description: ticketListDaysQueryDescription,
             },
+            {
+              in: "query",
+              name: "page",
+              required: false,
+              schema: { type: "integer", minimum: 1, default: 1 },
+            },
+            {
+              in: "query",
+              name: "limit",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+            },
           ],
           responses: {
-            "200": { description: "Assigned tickets list" },
+            "200": { description: "Paginated assigned tickets list" },
             "403": { description: "Only workers can access this endpoint" },
           },
         },
@@ -1035,7 +1066,7 @@ export function buildOpenApiSpec() {
           },
         },
       },
-      "/buses": {
+      "/master/buses": {
         get: {
           tags: ["Buses"],
           summary: "List buses",
@@ -1073,7 +1104,7 @@ export function buildOpenApiSpec() {
           },
         },
       },
-      "/buses/bus-numbers": {
+      "/master/buses/bus-numbers": {
         get: {
           tags: ["Buses"],
           summary: "List all bus numbers (all authenticated roles)",
@@ -1101,7 +1132,7 @@ export function buildOpenApiSpec() {
           },
         },
       },
-      "/buses/{busId}/tickets": {
+      "/master/buses/{busId}/tickets": {
         get: {
           tags: ["Buses"],
           summary: "Bus ticket history (timeline excerpt per ticket); workers see only their assignments",
@@ -1126,7 +1157,7 @@ export function buildOpenApiSpec() {
           },
         },
       },
-      "/buses/{busId}": {
+      "/master/buses/{busId}": {
         patch: {
           tags: ["Buses"],
           summary: "Update bus (Supervisor/Admin)",
@@ -1163,6 +1194,254 @@ export function buildOpenApiSpec() {
             "403": { description: "Forbidden by role matrix" },
             "404": { description: "Bus not found" },
           },
+        },
+        delete: {
+          tags: ["Buses"],
+          summary: "Delete bus (Supervisor/Admin)",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              in: "path",
+              name: "busId",
+              required: true,
+              schema: { type: "string" },
+            },
+          ],
+          responses: {
+            "200": { description: "Bus deleted" },
+            "409": { description: "Bus referenced by tickets or spare tanks" },
+          },
+        },
+      },
+      "/master/service-for": {
+        get: {
+          tags: ["Master - Service For"],
+          summary: "List service for entries",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Service for list" } },
+        },
+        post: {
+          tags: ["Master - Service For"],
+          summary: "Create service for (Admin/Supervisor)",
+          security: [{ bearerAuth: [] }],
+          responses: { "201": { description: "Created" } },
+        },
+      },
+      "/master/service-for/{serviceForId}": {
+        patch: {
+          tags: ["Master - Service For"],
+          summary: "Update service for",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "serviceForId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Updated" } },
+        },
+        delete: {
+          tags: ["Master - Service For"],
+          summary: "Delete service for",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "serviceForId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Deleted" } },
+        },
+      },
+      "/master/spare-tanks": {
+        get: {
+          tags: ["Master - Spare Tanks"],
+          summary: "List spare tanks (paginated)",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Spare tank list" } },
+        },
+        post: {
+          tags: ["Master - Spare Tanks"],
+          summary: "Create spare tank",
+          security: [{ bearerAuth: [] }],
+          responses: { "201": { description: "Created" } },
+        },
+      },
+      "/master/spare-tanks/{spareTankId}": {
+        patch: {
+          tags: ["Master - Spare Tanks"],
+          summary: "Update spare tank",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "spareTankId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Updated" } },
+        },
+        delete: {
+          tags: ["Master - Spare Tanks"],
+          summary: "Delete spare tank",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "spareTankId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Deleted" } },
+        },
+      },
+      "/master/service-numbers": {
+        get: {
+          tags: ["Master - Service Numbers"],
+          summary: "List service numbers (paginated)",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Service number list" } },
+        },
+        post: {
+          tags: ["Master - Service Numbers"],
+          summary: "Create service number",
+          security: [{ bearerAuth: [] }],
+          responses: { "201": { description: "Created" } },
+        },
+      },
+      "/master/service-numbers/{serviceNumberId}": {
+        patch: {
+          tags: ["Master - Service Numbers"],
+          summary: "Update service number",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "serviceNumberId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Updated" } },
+        },
+        delete: {
+          tags: ["Master - Service Numbers"],
+          summary: "Delete service number",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "serviceNumberId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Deleted" } },
+        },
+      },
+      "/master/drivers": {
+        get: {
+          tags: ["Master - Drivers"],
+          summary: "List drivers (paginated, documents excluded)",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Driver list" } },
+        },
+        post: {
+          tags: ["Master - Drivers"],
+          summary: "Create driver with base64 document uploads",
+          security: [{ bearerAuth: [] }],
+          responses: { "201": { description: "Created with auto-generated driver ID" } },
+        },
+      },
+      "/master/drivers/{driverId}": {
+        get: {
+          tags: ["Master - Drivers"],
+          summary: "Get driver with document blobs as base64",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "driverId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Driver detail" } },
+        },
+        patch: {
+          tags: ["Master - Drivers"],
+          summary: "Update driver",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "driverId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Updated" } },
+        },
+        delete: {
+          tags: ["Master - Drivers"],
+          summary: "Delete driver",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "driverId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Deleted" } },
+        },
+      },
+      "/master/helpers": {
+        get: {
+          tags: ["Master - Helpers"],
+          summary: "List helpers (paginated)",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Helper list" } },
+        },
+        post: {
+          tags: ["Master - Helpers"],
+          summary: "Create helper with base64 document uploads",
+          security: [{ bearerAuth: [] }],
+          responses: { "201": { description: "Created with auto-generated helper ID" } },
+        },
+      },
+      "/master/helpers/{helperId}": {
+        get: {
+          tags: ["Master - Helpers"],
+          summary: "Get helper with documents",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "helperId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Helper detail" } },
+        },
+        patch: {
+          tags: ["Master - Helpers"],
+          summary: "Update helper",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "helperId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Updated" } },
+        },
+        delete: {
+          tags: ["Master - Helpers"],
+          summary: "Delete helper",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "helperId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Deleted" } },
+        },
+      },
+      "/master/office-staff": {
+        get: {
+          tags: ["Master - Office Staff"],
+          summary: "List office staff (paginated)",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Office staff list" } },
+        },
+        post: {
+          tags: ["Master - Office Staff"],
+          summary: "Create office staff with base64 document uploads",
+          security: [{ bearerAuth: [] }],
+          responses: { "201": { description: "Created with auto-generated staff ID" } },
+        },
+      },
+      "/master/office-staff/{staffId}": {
+        get: {
+          tags: ["Master - Office Staff"],
+          summary: "Get office staff with documents",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "staffId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Office staff detail" } },
+        },
+        patch: {
+          tags: ["Master - Office Staff"],
+          summary: "Update office staff",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "staffId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Updated" } },
+        },
+        delete: {
+          tags: ["Master - Office Staff"],
+          summary: "Delete office staff",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "staffId", required: true, schema: { type: "string" } },
+          ],
+          responses: { "200": { description: "Deleted" } },
         },
       },
     },

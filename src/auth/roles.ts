@@ -23,12 +23,13 @@ export const FEATURES = [
   "manage_users",
   "manage_categories",
   "manage_buses",
+  "manage_master",
 ] as const;
 
 export type Feature = (typeof FEATURES)[number];
 
 export const roleFeatureMatrix: Record<RoleCode, readonly Feature[]> = {
-  supervisor: ["create_ticket", "assign_ticket", "view_dashboard", "manage_buses"],
+  supervisor: ["create_ticket", "assign_ticket", "view_dashboard", "manage_buses", "manage_master"],
   worker: ["update_status", "view_dashboard"],
   admin: [
     "create_ticket",
@@ -38,6 +39,7 @@ export const roleFeatureMatrix: Record<RoleCode, readonly Feature[]> = {
     "manage_users",
     "manage_categories",
     "manage_buses",
+    "manage_master",
   ],
 };
 

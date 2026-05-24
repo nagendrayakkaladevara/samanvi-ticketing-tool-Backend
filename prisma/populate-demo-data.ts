@@ -26,10 +26,10 @@ const adapter = new PrismaPg(
 const prisma = new PrismaClient({ adapter });
 
 const CONFIG = {
-  busCount: 30,
+  busCount: 20,
   supervisorCount: 2,
-  workerCount: 10,
-  ticketCount: 7_500,
+  workerCount: 5,
+  ticketCount: 60,
   historyDays: 90,
   ticketBatchSize: 500,
   activityBatchSize: 1_000,
@@ -241,6 +241,10 @@ async function createBuses(): Promise<Array<{ id: string; busNumber: string }>> 
     const daysAgo = Math.floor(rand() * 120);
     return {
       busNumber,
+      engineNumber: `ENG-${String(index + 1).padStart(4, "0")}`,
+      chassisNumber: `CHS-${String(index + 1).padStart(4, "0")}`,
+      odometer: 50_000 + index * 1_000,
+      insuranceValidity: new Date(Date.now() + 365 * 86_400_000),
       lastMaintenanceDate: hasMaintenance
         ? new Date(Date.now() - daysAgo * 86_400_000)
         : null,

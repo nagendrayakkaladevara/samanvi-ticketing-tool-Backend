@@ -362,7 +362,13 @@ async function resolveBusIdForTicketCreation(
   if (existing) return existing.id;
   try {
     const created = await tx.bus.create({
-      data: { busNumber: normalized },
+      data: {
+        busNumber: normalized,
+        engineNumber: `AUTO-${normalized}`,
+        chassisNumber: `AUTO-${normalized}`,
+        odometer: 0,
+        insuranceValidity: new Date(Date.now() + 365 * 86_400_000),
+      },
       select: { id: true },
     });
     return created.id;
