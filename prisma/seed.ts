@@ -184,8 +184,8 @@ async function main() {
     await prisma.ticket.create({
       data: {
         ticketNumber: 1001 + i,
-        title: `[Seed] Ticket ${String(i + 1).padStart(2, "0")} - ${categoryName} issue`,
-        description: `Generated seed ticket ${i + 1} for ${busNumber}.`,
+        title: `${categoryName} issue on ${busNumber}`,
+        description: `Maintenance ticket for ${busNumber} — ${categoryName} category.`,
         status,
         severity,
         priority,

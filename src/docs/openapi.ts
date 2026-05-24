@@ -1073,6 +1073,34 @@ export function buildOpenApiSpec() {
           },
         },
       },
+      "/buses/bus-numbers": {
+        get: {
+          tags: ["Buses"],
+          summary: "List all bus numbers (all authenticated roles)",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Sorted array of bus numbers",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["success", "data"],
+                    properties: {
+                      success: { type: "boolean", example: true },
+                      data: {
+                        type: "array",
+                        items: { type: "string", example: "BUS-1001" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "401": { description: "Missing/invalid token" },
+          },
+        },
+      },
       "/buses/{busId}/tickets": {
         get: {
           tags: ["Buses"],

@@ -96,6 +96,21 @@ busesRouter.get(
 );
 
 busesRouter.get(
+  "/buses/bus-numbers",
+  asyncHandler(async (_req, res) => {
+    const buses = await prisma.bus.findMany({
+      orderBy: { busNumber: "asc" },
+      select: { busNumber: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: buses.map((bus) => bus.busNumber),
+    });
+  }),
+);
+
+busesRouter.get(
   "/buses/:busId/tickets",
   asyncHandler(async (req, res) => {
     if (!req.user) {
