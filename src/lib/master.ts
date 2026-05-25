@@ -11,7 +11,17 @@ export const ddMmYyyySchema = z
 
 export const optionalDdMmYyyySchema = ddMmYyyySchema.optional();
 
-export const nullableDdMmYyyySchema = ddMmYyyySchema.nullable().optional();
+function emptyToUndefined<T>(value: T): T | undefined {
+  if (value === "" || value === null) {
+    return undefined;
+  }
+  return value;
+}
+
+export const nullableDdMmYyyySchema = z.preprocess(
+  (value) => (value === "" ? null : value),
+  ddMmYyyySchema.nullable().optional(),
+);
 
 export function parseDdMmYyyy(value: string): Date {
   const [day, month, year] = value.split("-").map(Number);
@@ -55,7 +65,10 @@ export const base64DocumentSchema = z
     }
   }, "Document must be a valid base64 string");
 
-export const optionalBase64DocumentSchema = base64DocumentSchema.optional();
+export const optionalBase64DocumentSchema = z.preprocess(
+  emptyToUndefined,
+  base64DocumentSchema.optional(),
+);
 
 export function decodeBase64Document(value: string): PrismaBytes {
   const buf = Buffer.from(value, "base64");
@@ -95,11 +108,20 @@ export const mobileNumberSchema = z
   .trim()
   .regex(/^\d{10}$/, "Mobile number must be exactly 10 digits");
 
-export const optionalMobileNumberSchema = z
-  .string()
-  .trim()
-  .regex(/^\d{10}$/, "Mobile number must be exactly 10 digits")
-  .optional();
+export const optionalMobileNumberSchema = z.preprocess(
+  emptyToUndefined,
+  mobileNumberSchema.optional(),
+);
+
+export const optionalUpiIdSchema = z.preprocess(
+  emptyToUndefined,
+  z.string().trim().min(1).max(120).optional(),
+);
+
+export const optionalRemarksSchema = z.preprocess(
+  emptyToUndefined,
+  z.string().trim().max(500).optional(),
+);
 
 export const aadharNumberSchema = z
   .string()
