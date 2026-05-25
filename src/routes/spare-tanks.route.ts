@@ -13,12 +13,10 @@ import { requireAuth, requireFeature } from "../middleware/auth";
 
 const spareTankSelect = {
   id: true,
+  busNumber: true,
   ownerName: true,
   createdAt: true,
   updatedAt: true,
-  bus: {
-    select: { id: true, busNumber: true },
-  },
 } satisfies Prisma.SpareTankSelect;
 
 const createSpareTankSchema = z.object({
@@ -38,17 +36,6 @@ const updateSpareTankSchema = z
 const spareTanksRouter = Router();
 
 spareTanksRouter.use(requireAuth);
-
-async function resolveBusId(busNumber: string): Promise<string> {
-  const bus = await prisma.bus.findUnique({
-    where: { busNumber: normalizeBusNumber(busNumber) },
-    select: { id: true },
-  });
-  if (!bus) {
-    throw notFound("Bus not found");
-  }
-  return bus.id;
-}
 
 spareTanksRouter.get(
   "/spare-tanks",
@@ -90,11 +77,9 @@ spareTanksRouter.post(
       });
     }
 
-    const busId = await resolveBusId(parsedBody.data.busNumber);
-
     const item = await prisma.spareTank.create({
       data: {
-        busId,
+        busNumber: normalizeBusNumber(parsedBody.data.busNumber),
         ownerName: parsedBody.data.ownerName,
       },
       select: spareTankSelect,
@@ -128,15 +113,12 @@ spareTanksRouter.patch(
       throw notFound("Spare tank not found");
     }
 
-    const busId =
-      parsedBody.data.busNumber !== undefined
-        ? await resolveBusId(parsedBody.data.busNumber)
-        : undefined;
-
     const item = await prisma.spareTank.update({
       where: { id: spareTankId },
       data: {
-        ...(busId !== undefined ? { busId } : {}),
+        ...(parsedBody.data.busNumber !== undefined
+          ? { busNumber: normalizeBusNumber(parsedBody.data.busNumber) }
+          : {}),
         ...(parsedBody.data.ownerName !== undefined
           ? { ownerName: parsedBody.data.ownerName }
           : {}),

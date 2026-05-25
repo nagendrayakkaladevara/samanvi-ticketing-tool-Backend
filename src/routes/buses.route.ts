@@ -440,7 +440,7 @@ busesRouter.delete(
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2003"
       ) {
-        throw conflict("Bus cannot be deleted because it is referenced by tickets or spare tanks");
+        throw conflict("Bus cannot be deleted because it is referenced by tickets");
       }
       throw error;
     }

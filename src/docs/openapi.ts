@@ -1209,7 +1209,7 @@ export function buildOpenApiSpec() {
           ],
           responses: {
             "200": { description: "Bus deleted" },
-            "409": { description: "Bus referenced by tickets or spare tanks" },
+            "409": { description: "Bus referenced by tickets" },
           },
         },
       },

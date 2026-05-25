@@ -107,20 +107,18 @@ model Bus {
   remarks                   String?     @db.VarChar(500)
   lastMaintenanceDate       DateTime?
   tickets                   Ticket[]
-  spareTanks                SpareTank[]
   createdAt                 DateTime    @default(now())
   updatedAt                 DateTime    @updatedAt
 }
 
 model SpareTank {
   id        String   @id @default(cuid())
-  busId     String
-  bus       Bus      @relation(fields: [busId], references: [id], onDelete: Restrict)
+  busNumber String   @db.VarChar(50)
   ownerName String   @db.VarChar(120)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([busId])
+  @@index([busNumber])
 }
 
 model ServiceNumber {
