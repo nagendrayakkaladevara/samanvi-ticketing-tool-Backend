@@ -47,13 +47,12 @@ The Master module is grouped under a single route prefix:
 
 ```
 Service For ──► Service Number (serviceForId FK)
-Bus ──► Spare Tank (busNumber must exist)
 ```
 
 Recommended UI flow:
 
 1. Create **Service For** entries before **Service Numbers**.
-2. Create **Buses** before **Spare Tanks** (spare tank references an existing bus number).
+2. **Spare Tanks** accept any bus number — it does not need to exist in the Buses master.
 
 ---
 
@@ -379,7 +378,7 @@ GET /master/buses?page=1&limit=20
 GET /master/buses/bus-numbers
 ```
 
-Returns a flat array of bus number strings (for ticket creation, spare tank dropdowns, etc.).
+Returns a flat array of bus number strings (for ticket creation, optional spare tank autocomplete, etc.).
 
 **Response `200`**
 
@@ -504,7 +503,7 @@ DELETE /master/buses/:busId
 }
 ```
 
-**Errors:** `409` if the bus is referenced by tickets or spare tanks.
+**Errors:** `409` if the bus is referenced by tickets.
 
 ---
 
@@ -525,13 +524,10 @@ GET /master/spare-tanks?page=1&limit=20
     "items": [
       {
         "id": "clx...",
+        "busNumber": "BUS-1001",
         "ownerName": "Ravi Kumar",
         "createdAt": "2026-05-24T10:00:00.000Z",
-        "updatedAt": "2026-05-24T10:00:00.000Z",
-        "bus": {
-          "id": "clx...",
-          "busNumber": "BUS-1001"
-        }
+        "updatedAt": "2026-05-24T10:00:00.000Z"
       }
     ]
   },
@@ -553,7 +549,7 @@ POST /master/spare-tanks
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `busNumber` | string | Yes | Must match an existing bus (case-insensitive) |
+| `busNumber` | string | Yes | Any bus number (1–50 chars); does not need to exist in Buses master |
 | `ownerName` | string | Yes | 1–120 chars |
 
 ```json
@@ -565,7 +561,7 @@ POST /master/spare-tanks
 
 **Response `201`**
 
-**Errors:** `404` if bus number not found.
+**Errors:** none specific to bus lookup — any valid bus number is accepted.
 
 ---
 
@@ -978,7 +974,7 @@ Ticket creation (`POST /tickets`) still accepts `busNumber` and auto-creates a m
 
 1. **Master landing page** — tabs or sidebar for each sub-module.
 2. **Service Number form** — load Service For dropdown from `GET /master/service-for`.
-3. **Spare Tank form** — load bus numbers from `GET /master/buses/bus-numbers`.
+3. **Spare Tank form** — free-text bus number input (optional autocomplete from `GET /master/buses/bus-numbers`).
 4. **Employee forms** — use date pickers formatted as `dd-mm-yyyy` before submit.
 5. **Employee list** — paginate; fetch detail (with documents) only on view/edit.
 6. **Delete confirmations** — show API error message on `409` (referenced records).
