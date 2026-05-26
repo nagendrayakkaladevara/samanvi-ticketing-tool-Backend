@@ -6,12 +6,11 @@ import {
 } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
-import type { AccessTokenPayload } from "../auth/auth.service";
 import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, forbidden, notFound } from "../core/errors/http-errors";
 import {
   allowedRepairJobStatusTransitions,
-  assertActiveWorkerUser,
+  assertAssignableOfficeStaff,
   generateRepairJobIdNumber,
   processDueRepeatJobs,
   repairJobNotDeletedWhere,
@@ -55,11 +54,13 @@ const repairJobSelect = {
       dlName: true,
     },
   },
-  assignedTo: {
+  assignedToOfficeStaff: {
     select: {
       id: true,
-      username: true,
-      displayName: true,
+      staffIdNumber: true,
+      nickName: true,
+      aadharName: true,
+      designation: true,
     },
   },
   createdBy: {
@@ -119,7 +120,7 @@ const createRepairJobSchema = z.object({
   repairCategoryId: z.string().trim().min(1),
   priority: z.nativeEnum(RepairJobPriority),
   reportedDriverId: z.string().trim().min(1).optional(),
-  assignedToId: z.string().trim().min(1).optional(),
+  assignedToOfficeStaffId: z.string().trim().min(1).optional(),
   description: z.string().trim().min(1),
   status: z.nativeEnum(RepairJobStatus).optional(),
 });
@@ -127,7 +128,7 @@ const createRepairJobSchema = z.object({
 const jobListQuerySchema = paginationQuerySchema.extend({
   status: z.nativeEnum(RepairJobStatus).optional(),
   priority: z.nativeEnum(RepairJobPriority).optional(),
-  assignedToId: z.string().trim().min(1).optional(),
+  assignedToOfficeStaffId: z.string().trim().min(1).optional(),
   busId: z.string().trim().min(1).optional(),
   isRepeatJob: z.coerce.boolean().optional(),
 });
@@ -138,7 +139,7 @@ const updateRepairJobSchema = z
     repairCategoryId: z.string().trim().min(1).optional(),
     priority: z.nativeEnum(RepairJobPriority).optional(),
     reportedDriverId: z.string().trim().min(1).nullable().optional(),
-    assignedToId: z.string().trim().min(1).nullable().optional(),
+    assignedToOfficeStaffId: z.string().trim().min(1).nullable().optional(),
     description: z.string().trim().min(1).optional(),
     status: z.nativeEnum(RepairJobStatus).optional(),
     scheduleRepeatFor: isoDateStringSchema.optional(),
@@ -149,7 +150,7 @@ const updateRepairJobSchema = z
       value.repairCategoryId !== undefined ||
       value.priority !== undefined ||
       value.reportedDriverId !== undefined ||
-      value.assignedToId !== undefined ||
+      value.assignedToOfficeStaffId !== undefined ||
       value.description !== undefined ||
       value.status !== undefined ||
       value.scheduleRepeatFor !== undefined,
@@ -172,20 +173,13 @@ function assertJobId(jobId: string | string[] | undefined): string {
   return jobId;
 }
 
-async function findVisibleRepairJobOrThrow(
-  jobId: string,
-  viewer: AccessTokenPayload,
-) {
+async function findVisibleRepairJobOrThrow(jobId: string) {
   const job = await prisma.repairJob.findFirst({
     where: { id: jobId, ...repairJobNotDeletedWhere },
     select: repairJobSelect,
   });
 
   if (!job) {
-    throw notFound("Repair job not found");
-  }
-
-  if (viewer.roleCode === RoleCode.worker && job.assignedTo?.id !== viewer.sub) {
     throw notFound("Repair job not found");
   }
 
@@ -219,7 +213,7 @@ jobsRouter.get(
       });
     }
 
-    const { page, limit, status, priority, assignedToId, busId, isRepeatJob } =
+    const { page, limit, status, priority, assignedToOfficeStaffId, busId, isRepeatJob } =
       parsedQuery.data;
     const skip = (page - 1) * limit;
 
@@ -227,10 +221,8 @@ jobsRouter.get(
       ...repairJobNotDeletedWhere,
     };
 
-    if (req.user.roleCode === RoleCode.worker) {
-      where.assignedToId = req.user.sub;
-    } else if (assignedToId) {
-      where.assignedToId = assignedToId;
+    if (assignedToOfficeStaffId) {
+      where.assignedToOfficeStaffId = assignedToOfficeStaffId;
     }
 
     if (status) {
@@ -265,6 +257,14 @@ jobsRouter.get(
   }),
 );
 
+const myJobsQuerySchema = paginationQuerySchema.extend({
+  status: z.nativeEnum(RepairJobStatus).optional(),
+  priority: z.nativeEnum(RepairJobPriority).optional(),
+  busId: z.string().trim().min(1).optional(),
+  isRepeatJob: z.coerce.boolean().optional(),
+  assignedToOfficeStaffId: z.string().trim().min(1),
+});
+
 jobsRouter.get(
   "/jobs/my",
   asyncHandler(async (req, res) => {
@@ -274,19 +274,28 @@ jobsRouter.get(
 
     await processDueRepeatJobs();
 
-    const parsedQuery = jobListQuerySchema.safeParse(req.query);
+    const parsedQuery = myJobsQuerySchema.safeParse(req.query);
     if (!parsedQuery.success) {
       throw badRequest("Invalid repair jobs query params", {
         issues: parsedQuery.error.issues,
       });
     }
 
-    const { page, limit, status, priority, busId, isRepeatJob } = parsedQuery.data;
+    const { page, limit, status, priority, busId, isRepeatJob, assignedToOfficeStaffId } =
+      parsedQuery.data;
     const skip = (page - 1) * limit;
+
+    const staff = await prisma.officeStaff.findUnique({
+      where: { id: assignedToOfficeStaffId },
+      select: { id: true },
+    });
+    if (!staff) {
+      throw notFound("Office staff not found");
+    }
 
     const where: Prisma.RepairJobWhereInput = {
       ...repairJobNotDeletedWhere,
-      assignedToId: req.user.sub,
+      assignedToOfficeStaffId,
     };
 
     if (status) {
@@ -331,7 +340,7 @@ jobsRouter.get(
     await processDueRepeatJobs();
 
     const jobId = assertJobId(req.params.jobId);
-    const job = await findVisibleRepairJobOrThrow(jobId, req.user);
+    const job = await findVisibleRepairJobOrThrow(jobId);
 
     res.status(200).json({ success: true, data: serializeRepairJob(job) });
   }),
@@ -378,17 +387,21 @@ jobsRouter.post(
       }
     }
 
-    if (parsedBody.data.assignedToId) {
+    if (parsedBody.data.assignedToOfficeStaffId) {
       try {
-        await assertActiveWorkerUser(parsedBody.data.assignedToId);
-      } catch {
-        throw badRequest("Assigned user must be an active worker");
+        await assertAssignableOfficeStaff(parsedBody.data.assignedToOfficeStaffId);
+      } catch (error) {
+        throw badRequest(
+          error instanceof Error ? error.message : "Invalid office staff assignee",
+        );
       }
     }
 
     const initialStatus =
       parsedBody.data.status ??
-      (parsedBody.data.assignedToId ? RepairJobStatus.assigned : RepairJobStatus.created);
+      (parsedBody.data.assignedToOfficeStaffId
+        ? RepairJobStatus.assigned
+        : RepairJobStatus.created);
 
     const job = await prisma.$transaction(async (tx) => {
       const jobIdNumber = await generateRepairJobIdNumber(tx);
@@ -401,7 +414,7 @@ jobsRouter.post(
           repairCategoryId: parsedBody.data.repairCategoryId,
           priority: parsedBody.data.priority,
           reportedDriverId: parsedBody.data.reportedDriverId ?? null,
-          assignedToId: parsedBody.data.assignedToId ?? null,
+          assignedToOfficeStaffId: parsedBody.data.assignedToOfficeStaffId ?? null,
           description: parsedBody.data.description,
           status: initialStatus,
           createdById: req.user!.sub,
@@ -430,7 +443,7 @@ jobsRouter.patch(
       });
     }
 
-    const existing = await findVisibleRepairJobOrThrow(jobId, req.user);
+    const existing = await findVisibleRepairJobOrThrow(jobId);
 
     if (parsedBody.data.repairCategoryId) {
       const category = await prisma.repairCategory.findUnique({
@@ -458,11 +471,13 @@ jobsRouter.patch(
       }
     }
 
-    if (parsedBody.data.assignedToId) {
+    if (parsedBody.data.assignedToOfficeStaffId) {
       try {
-        await assertActiveWorkerUser(parsedBody.data.assignedToId);
-      } catch {
-        throw badRequest("Assigned user must be an active worker");
+        await assertAssignableOfficeStaff(parsedBody.data.assignedToOfficeStaffId);
+      } catch (error) {
+        throw badRequest(
+          error instanceof Error ? error.message : "Invalid office staff assignee",
+        );
       }
     }
 
@@ -498,9 +513,9 @@ jobsRouter.patch(
         ? { connect: { id: parsedBody.data.reportedDriverId } }
         : { disconnect: true };
     }
-    if (parsedBody.data.assignedToId !== undefined) {
-      updateData.assignedTo = parsedBody.data.assignedToId
-        ? { connect: { id: parsedBody.data.assignedToId } }
+    if (parsedBody.data.assignedToOfficeStaffId !== undefined) {
+      updateData.assignedToOfficeStaff = parsedBody.data.assignedToOfficeStaffId
+        ? { connect: { id: parsedBody.data.assignedToOfficeStaffId } }
         : { disconnect: true };
     }
     if (parsedBody.data.description !== undefined) {
@@ -540,7 +555,7 @@ jobsRouter.post(
       });
     }
 
-    await findVisibleRepairJobOrThrow(jobId, req.user);
+    await findVisibleRepairJobOrThrow(jobId);
 
     const part = await prisma.repairPart.findUnique({
       where: { id: parsedBody.data.repairPartId },

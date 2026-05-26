@@ -94,7 +94,6 @@ model User {
   activityLogs       TicketActivityLog[]
   notifications      Notification[]
   createdRepairJobs  RepairJob[]           @relation("RepairJobCreatedBy")
-  assignedRepairJobs RepairJob[]           @relation("RepairJobAssignedTo")
   repairJobParts     RepairJobPart[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
@@ -249,6 +248,7 @@ model OfficeStaff {
   aadharCardFront   Bytes
   aadharCardBack    Bytes
   upiScanner        Bytes?
+  assignedRepairJobs RepairJob[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 }
@@ -367,11 +367,11 @@ model RepairJob {
   repairCategoryId   String
   repairCategory     RepairCategory    @relation(fields: [repairCategoryId], references: [id], onDelete: Restrict)
   priority           RepairJobPriority
-  reportedDriverId   String?
-  reportedDriver     Driver?           @relation(fields: [reportedDriverId], references: [id], onDelete: SetNull)
-  assignedToId       String?
-  assignedTo         User?             @relation("RepairJobAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
-  description        String
+  reportedDriverId         String?
+  reportedDriver           Driver?      @relation(fields: [reportedDriverId], references: [id], onDelete: SetNull)
+  assignedToOfficeStaffId  String?
+  assignedToOfficeStaff    OfficeStaff? @relation(fields: [assignedToOfficeStaffId], references: [id], onDelete: SetNull)
+  description              String
   status             RepairJobStatus   @default(created)
   createdById        String
   createdBy          User              @relation("RepairJobCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -386,7 +386,7 @@ model RepairJob {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
-  @@index([assignedToId])
+  @@index([assignedToOfficeStaffId])
   @@index([status])
   @@index([deletedAt])
   @@index([repeatScheduledFor])

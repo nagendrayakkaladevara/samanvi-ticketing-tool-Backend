@@ -1,4 +1,4 @@
-import { Prisma, RepairJobStatus, RoleCode } from "@prisma/client";
+import { Prisma, RepairJobStatus } from "@prisma/client";
 import { prisma } from "./prisma";
 
 export const MAX_REPAIR_CATEGORY_DEPTH = 5;
@@ -94,7 +94,7 @@ export async function processDueRepeatJobs(
       repairCategoryId: true,
       priority: true,
       reportedDriverId: true,
-      assignedToId: true,
+      assignedToOfficeStaffId: true,
       description: true,
       createdById: true,
     },
@@ -113,9 +113,11 @@ export async function processDueRepeatJobs(
         repairCategoryId: source.repairCategoryId,
         priority: source.priority,
         reportedDriverId: source.reportedDriverId,
-        assignedToId: source.assignedToId,
+        assignedToOfficeStaffId: source.assignedToOfficeStaffId,
         description: source.description,
-        status: source.assignedToId ? RepairJobStatus.assigned : RepairJobStatus.created,
+        status: source.assignedToOfficeStaffId
+          ? RepairJobStatus.assigned
+          : RepairJobStatus.created,
         createdById: source.createdById,
         isRepeatJob: true,
         previousJobId: source.id,
@@ -157,16 +159,15 @@ export const allowedRepairJobStatusTransitions: Record<
   [RepairJobStatus.cancelled]: [],
 };
 
-export async function assertActiveWorkerUser(userId: string): Promise<void> {
-  const user = await prisma.user.findFirst({
-    where: {
-      id: userId,
-      isActive: true,
-      role: { code: RoleCode.worker },
-    },
-    select: { id: true },
+export async function assertAssignableOfficeStaff(officeStaffId: string): Promise<void> {
+  const staff = await prisma.officeStaff.findUnique({
+    where: { id: officeStaffId },
+    select: { id: true, dateOfLeaving: true },
   });
-  if (!user) {
-    throw new Error("Assigned user must be an active worker");
+  if (!staff) {
+    throw new Error("Office staff not found");
+  }
+  if (staff.dateOfLeaving) {
+    throw new Error("Cannot assign repair job to office staff who has left");
   }
 }
