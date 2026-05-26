@@ -54,6 +54,22 @@ enum NotificationType {
   ticket_closed
 }
 
+enum RepairJobStatus {
+  created
+  assigned
+  in_progress
+  on_hold
+  completed
+  cancelled
+}
+
+enum RepairJobPriority {
+  low
+  medium
+  high
+  urgent
+}
+
 model Role {
   id        String    @id @default(cuid())
   code      RoleCode  @unique
@@ -77,6 +93,9 @@ model User {
   assignmentActions  Ticket[]              @relation("TicketAssignedBy")
   activityLogs       TicketActivityLog[]
   notifications      Notification[]
+  createdRepairJobs  RepairJob[]           @relation("RepairJobCreatedBy")
+  assignedRepairJobs RepairJob[]           @relation("RepairJobAssignedTo")
+  repairJobParts     RepairJobPart[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 }
@@ -107,6 +126,7 @@ model Bus {
   remarks                   String?     @db.VarChar(500)
   lastMaintenanceDate       DateTime?
   tickets                   Ticket[]
+  repairJobs                RepairJob[]
   createdAt                 DateTime    @default(now())
   updatedAt                 DateTime    @updatedAt
 }
@@ -175,6 +195,7 @@ model Driver {
   dlFront              Bytes
   dlBack               Bytes
   upiScanner           Bytes?
+  reportedRepairJobs   RepairJob[]
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 }
@@ -310,4 +331,79 @@ model Notification {
 
   @@index([userId, readAt, createdAt(sort: Desc)])
   @@index([ticketId])
+}
+
+model RepairCategory {
+  id         String           @id @default(cuid())
+  name       String           @db.VarChar(120)
+  parentId   String?
+  parent     RepairCategory?  @relation("RepairCategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children   RepairCategory[] @relation("RepairCategoryHierarchy")
+  level      Int
+  repairJobs RepairJob[]
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([parentId, name])
+  @@index([parentId])
+}
+
+model RepairPart {
+  id          String          @id @default(cuid())
+  partName    String          @unique @db.VarChar(120)
+  price       Decimal         @db.Decimal(12, 2)
+  description String?         @db.VarChar(500)
+  jobParts    RepairJobPart[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model RepairJob {
+  id                 String            @id @default(cuid())
+  jobIdNumber        String            @unique @db.VarChar(10)
+  busId              String
+  bus                Bus               @relation(fields: [busId], references: [id], onDelete: Restrict)
+  odometerReading    Int
+  repairCategoryId   String
+  repairCategory     RepairCategory    @relation(fields: [repairCategoryId], references: [id], onDelete: Restrict)
+  priority           RepairJobPriority
+  reportedDriverId   String?
+  reportedDriver     Driver?           @relation(fields: [reportedDriverId], references: [id], onDelete: SetNull)
+  assignedToId       String?
+  assignedTo         User?             @relation("RepairJobAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  description        String
+  status             RepairJobStatus   @default(created)
+  createdById        String
+  createdBy          User              @relation("RepairJobCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  isRepeatJob        Boolean           @default(false)
+  previousJobId      String?
+  previousJob        RepairJob?        @relation("RepairJobRepeatChain", fields: [previousJobId], references: [id], onDelete: SetNull)
+  repeatChildren     RepairJob[]       @relation("RepairJobRepeatChain")
+  repeatScheduledFor DateTime?
+  repeatProcessedAt  DateTime?
+  deletedAt          DateTime?
+  parts              RepairJobPart[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([assignedToId])
+  @@index([status])
+  @@index([deletedAt])
+  @@index([repeatScheduledFor])
+  @@index([busId])
+}
+
+model RepairJobPart {
+  id           String     @id @default(cuid())
+  repairJobId  String
+  repairJob    RepairJob  @relation(fields: [repairJobId], references: [id], onDelete: Cascade)
+  repairPartId String
+  repairPart   RepairPart @relation(fields: [repairPartId], references: [id], onDelete: Restrict)
+  quantity     Int        @default(1)
+  unitPrice    Decimal    @db.Decimal(12, 2)
+  addedById    String
+  addedBy      User       @relation(fields: [addedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime   @default(now())
+
+  @@index([repairJobId])
 }

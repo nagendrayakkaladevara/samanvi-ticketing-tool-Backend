@@ -24,13 +24,25 @@ export const FEATURES = [
   "manage_categories",
   "manage_buses",
   "manage_master",
+  "create_garage_job",
+  "manage_garage_job",
+  "manage_garage_masters",
 ] as const;
 
 export type Feature = (typeof FEATURES)[number];
 
 export const roleFeatureMatrix: Record<RoleCode, readonly Feature[]> = {
-  supervisor: ["create_ticket", "assign_ticket", "view_dashboard", "manage_buses", "manage_master"],
-  worker: ["update_status", "view_dashboard"],
+  supervisor: [
+    "create_ticket",
+    "assign_ticket",
+    "view_dashboard",
+    "manage_buses",
+    "manage_master",
+    "create_garage_job",
+    "manage_garage_job",
+    "manage_garage_masters",
+  ],
+  worker: ["update_status", "view_dashboard", "manage_garage_job"],
   admin: [
     "create_ticket",
     "assign_ticket",
@@ -40,6 +52,9 @@ export const roleFeatureMatrix: Record<RoleCode, readonly Feature[]> = {
     "manage_categories",
     "manage_buses",
     "manage_master",
+    "create_garage_job",
+    "manage_garage_job",
+    "manage_garage_masters",
   ],
 };
 
