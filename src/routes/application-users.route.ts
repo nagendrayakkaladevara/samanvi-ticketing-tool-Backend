@@ -10,6 +10,8 @@ import { toUserUniqueConflictError } from "../lib/prisma-user-unique";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { syncUserPermissions } from "../lib/permissions";
 
+const usernameSchema = z.string().trim().min(3).max(50);
+
 const mobileNumberSchema = z
   .string()
   .trim()
@@ -20,6 +22,7 @@ const managedRoleCodeSchema = z.enum(MANAGED_USER_TYPE_CODES);
 const permissionIdsSchema = z.array(z.string().trim().min(1)).default([]);
 
 const createApplicationUserSchema = z.object({
+  username: usernameSchema,
   fullName: z.string().trim().min(1).max(100),
   password: z.string().min(6).max(128),
   mobileNumber: mobileNumberSchema,
@@ -31,6 +34,7 @@ const createApplicationUserSchema = z.object({
 
 const updateApplicationUserSchema = z
   .object({
+    username: usernameSchema.optional(),
     fullName: z.string().trim().min(1).max(100).optional(),
     password: z.string().min(6).max(128).optional(),
     mobileNumber: mobileNumberSchema.optional(),
@@ -41,6 +45,7 @@ const updateApplicationUserSchema = z
   })
   .refine(
     (value) =>
+      value.username !== undefined ||
       value.fullName !== undefined ||
       value.password !== undefined ||
       value.mobileNumber !== undefined ||
@@ -244,7 +249,7 @@ applicationUsersRouter.post(
     try {
       const user = await prisma.user.create({
         data: {
-          username: parsedBody.data.mobileNumber,
+          username: parsedBody.data.username,
           mobileNumber: parsedBody.data.mobileNumber,
           passwordHash: await hashPassword(parsedBody.data.password),
           displayName: parsedBody.data.fullName,
@@ -339,11 +344,11 @@ applicationUsersRouter.patch(
           ...(parsedBody.data.password !== undefined
             ? { passwordHash: await hashPassword(parsedBody.data.password) }
             : {}),
+          ...(parsedBody.data.username !== undefined
+            ? { username: parsedBody.data.username }
+            : {}),
           ...(parsedBody.data.mobileNumber !== undefined
-            ? {
-                mobileNumber: parsedBody.data.mobileNumber,
-                username: parsedBody.data.mobileNumber,
-              }
+            ? { mobileNumber: parsedBody.data.mobileNumber }
             : {}),
           ...(parsedBody.data.email !== undefined
             ? { email: parsedBody.data.email }
