@@ -63,6 +63,11 @@ const applicationUserListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const usernameExistsQuerySchema = z.object({
+  username: usernameSchema,
+  excludeUserId: z.string().trim().min(1).optional(),
+});
+
 const applicationUserSelect = {
   id: true,
   username: true,
@@ -132,6 +137,37 @@ applicationUsersRouter.get(
       success: true,
       data: {
         permissions,
+      },
+    });
+  }),
+);
+
+applicationUsersRouter.get(
+  "/application-users/username-exists",
+  requirePermission({ module: "users", submodule: "", action: "view" }),
+  asyncHandler(async (req, res) => {
+    const parsedQuery = usernameExistsQuerySchema.safeParse(req.query);
+    if (!parsedQuery.success) {
+      throw badRequest("Invalid username query params", {
+        issues: parsedQuery.error.issues,
+      });
+    }
+
+    const { username, excludeUserId } = parsedQuery.data;
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        username,
+        ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+      },
+      select: { id: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        username,
+        exists: existing !== null,
       },
     });
   }),
