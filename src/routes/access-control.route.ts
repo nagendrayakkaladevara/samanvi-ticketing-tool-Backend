@@ -79,4 +79,36 @@ accessControlRouter.post(
   },
 );
 
+accessControlRouter.post("/garage/jobs", requireFeature("create_garage_job"), (_req, res) => {
+  res.status(200).json({
+    success: true,
+    data: { message: "Allowed to create repair jobs" },
+  });
+});
+
+accessControlRouter.patch(
+  "/garage/jobs/:jobId",
+  requireFeature("manage_garage_job"),
+  (req, res) => {
+    res.status(200).json({
+      success: true,
+      data: {
+        message: "Allowed to manage repair jobs",
+        jobId: req.params.jobId,
+      },
+    });
+  },
+);
+
+accessControlRouter.post(
+  "/garage/masters/repair-categories",
+  requireFeature("manage_garage_masters"),
+  (_req, res) => {
+    res.status(200).json({
+      success: true,
+      data: { message: "Allowed to manage garage masters" },
+    });
+  },
+);
+
 export { accessControlRouter };
