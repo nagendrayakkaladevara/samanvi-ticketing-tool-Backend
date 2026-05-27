@@ -5,6 +5,7 @@ import {
 } from "../auth/auth.service";
 import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, unauthorized } from "../core/errors/http-errors";
+import { getUserEffectivePermissions } from "../lib/permissions";
 import { requireAuth } from "../middleware/auth";
 
 const authRouter = Router();
@@ -41,18 +42,26 @@ authRouter.post(
   }),
 );
 
-authRouter.get("/me", requireAuth, (req, res, next) => {
+authRouter.get("/me", requireAuth, asyncHandler(async (req, res, next) => {
   if (!req.user) {
     next(unauthorized("Authentication required"));
     return;
   }
 
+  const permissions = await getUserEffectivePermissions(
+    req.user.sub,
+    req.user.roleCode,
+  );
+
   res.status(200).json({
     success: true,
     data: {
-      user: req.user,
+      user: {
+        ...req.user,
+        permissions,
+      },
     },
   });
-});
+}));
 
 export { authRouter };

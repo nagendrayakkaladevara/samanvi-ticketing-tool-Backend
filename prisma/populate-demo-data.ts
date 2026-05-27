@@ -144,6 +144,9 @@ async function ensureRolesAndCategories(): Promise<Map<RoleCode, string>> {
   const roles: Array<{ code: RoleCode; label: string }> = [
     { code: RoleCode.admin, label: "Admin" },
     { code: RoleCode.supervisor, label: "Supervisor" },
+    { code: RoleCode.chairman, label: "Chairman" },
+    { code: RoleCode.accountant, label: "Accountant" },
+    { code: RoleCode.collection_agent, label: "Collection Agent" },
     { code: RoleCode.worker, label: "Worker" },
   ];
 
@@ -164,7 +167,18 @@ async function ensureRolesAndCategories(): Promise<Map<RoleCode, string>> {
   }
 
   const roleRows = await prisma.role.findMany({
-    where: { code: { in: [RoleCode.admin, RoleCode.supervisor, RoleCode.worker] } },
+    where: {
+      code: {
+        in: [
+          RoleCode.admin,
+          RoleCode.supervisor,
+          RoleCode.chairman,
+          RoleCode.accountant,
+          RoleCode.collection_agent,
+          RoleCode.worker,
+        ],
+      },
+    },
     select: { id: true, code: true },
   });
 

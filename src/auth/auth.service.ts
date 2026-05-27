@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env";
 import { unauthorized } from "../core/errors/http-errors";
 import { prisma } from "../lib/prisma";
+import type { EffectivePermission } from "../lib/permissions";
+import { getUserEffectivePermissions } from "../lib/permissions";
 import { verifyPassword } from "./password";
 import { getRoleLabel, type RoleCode } from "./roles";
 
@@ -12,6 +14,8 @@ export interface AuthUser {
   roleCode: RoleCode;
   roleLabel: string;
   displayName: string;
+  mobileNumber: string | null;
+  permissions: EffectivePermission[];
 }
 
 export interface AccessTokenPayload {
@@ -51,6 +55,7 @@ export async function authenticateUser(
   }
 
   const roleCode = toRoleCode(user.role.code);
+  const permissions = await getUserEffectivePermissions(user.id, roleCode);
 
   return {
     id: user.id,
@@ -58,10 +63,17 @@ export async function authenticateUser(
     roleCode,
     roleLabel: user.role.label ?? getRoleLabel(roleCode),
     displayName: user.displayName,
+    mobileNumber: user.mobileNumber,
+    permissions,
   };
 }
 
-export function issueAccessToken(user: AuthUser): string {
+export type TokenUser = Pick<
+  AuthUser,
+  "id" | "username" | "roleCode" | "roleLabel" | "displayName"
+>;
+
+export function issueAccessToken(user: TokenUser): string {
   const payload: AccessTokenPayload = {
     sub: user.id,
     username: user.username,
