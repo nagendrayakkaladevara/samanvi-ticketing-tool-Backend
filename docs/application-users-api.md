@@ -82,6 +82,7 @@ New roles can be added to the database enum/migration pipeline as the product gr
 
 ```json
 {
+  "username": "rajesh.kumar",
   "fullName": "Rajesh Kumar",
   "password": "secret123",
   "mobileNumber": "9876543210",
@@ -94,9 +95,10 @@ New roles can be added to the database enum/migration pipeline as the product gr
 
 | Field | Required | Notes |
 |-------|----------|-------|
+| `username` | Yes | Login username (3–50 characters, unique) |
 | `fullName` | Yes | Stored as `displayName` |
 | `password` | Yes | Min 6 characters |
-| `mobileNumber` | Yes | 10 digits; also used as login username |
+| `mobileNumber` | Yes | 10 digits |
 | `userType` | Yes | One of managed user types (not admin) |
 | `permissionIds` | No | Direct user permission overrides |
 
@@ -106,7 +108,7 @@ New roles can be added to the database enum/migration pipeline as the product gr
 
 **Permission:** `users::edit`
 
-All create fields optional. Updating `mobileNumber` also updates the login username.
+All create fields optional. `username` and `mobileNumber` can be updated independently.
 
 ### Assign user permissions
 
