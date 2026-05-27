@@ -15,6 +15,9 @@ export function toUserUniqueConflictError(
   if (target.includes("username")) {
     return conflict("Username already exists");
   }
+  if (target.includes("mobileNumber")) {
+    return conflict("Mobile number already exists");
+  }
   if (target.includes("email")) {
     return conflict("Email already exists");
   }

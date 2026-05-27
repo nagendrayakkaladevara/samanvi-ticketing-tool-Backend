@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, RoleCode, TicketPriority, TicketSeverity, TicketStatus } from "@prisma/client";
 import { Pool } from "pg";
 import { hashPassword } from "../src/auth/password";
+import { seedPermissions } from "../src/lib/permission-seed";
 
 const connectionString = process.env["DATABASE_URL"];
 
@@ -41,6 +42,9 @@ async function main() {
   const roles: Array<{ code: RoleCode; label: string }> = [
     { code: RoleCode.admin, label: "Admin" },
     { code: RoleCode.supervisor, label: "Supervisor" },
+    { code: RoleCode.chairman, label: "Chairman" },
+    { code: RoleCode.accountant, label: "Accountant" },
+    { code: RoleCode.collection_agent, label: "Collection Agent" },
     { code: RoleCode.worker, label: "Worker" },
   ];
 
@@ -58,12 +62,21 @@ async function main() {
   const roleRows = await prisma.role.findMany({
     where: {
       code: {
-        in: [RoleCode.admin, RoleCode.supervisor, RoleCode.worker],
+        in: [
+          RoleCode.admin,
+          RoleCode.supervisor,
+          RoleCode.chairman,
+          RoleCode.accountant,
+          RoleCode.collection_agent,
+          RoleCode.worker,
+        ],
       },
     },
     select: { id: true, code: true },
   });
   const roleIdByCode = new Map(roleRows.map((row) => [row.code, row.id]));
+
+  await seedPermissions(prisma);
 
   await prisma.notification.deleteMany({});
   await prisma.ticketActivityLog.deleteMany({});

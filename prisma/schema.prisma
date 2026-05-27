@@ -10,6 +10,9 @@ datasource db {
 enum RoleCode {
   admin
   supervisor
+  chairman
+  accountant
+  collection_agent
   worker
 }
 
@@ -71,12 +74,13 @@ enum RepairJobPriority {
 }
 
 model Role {
-  id        String    @id @default(cuid())
-  code      RoleCode  @unique
-  label     String    @db.VarChar(50)
-  users     User[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id              String           @id @default(cuid())
+  code            RoleCode         @unique
+  label           String           @db.VarChar(50)
+  users           User[]
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 }
 
 model User {
@@ -84,10 +88,12 @@ model User {
   username           String                @unique @db.VarChar(50)
   passwordHash       String                @db.VarChar(255)
   displayName        String                @db.VarChar(100)
+  mobileNumber       String?               @unique @db.VarChar(15)
   email              String?               @unique @db.VarChar(150)
   isActive           Boolean               @default(true)
   roleId             String
   role               Role                  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  userPermissions    UserPermission[]
   createdTickets     Ticket[]              @relation("TicketCreatedBy")
   assignedTickets    Ticket[]              @relation("TicketAssignedTo")
   assignmentActions  Ticket[]              @relation("TicketAssignedBy")
@@ -97,6 +103,41 @@ model User {
   repairJobParts     RepairJobPart[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  module          String           @db.VarChar(80)
+  submodule       String           @default("") @db.VarChar(80)
+  action          String           @db.VarChar(50)
+  label           String           @db.VarChar(120)
+  sortOrder       Int              @default(0)
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([module, submodule, action])
+  @@index([module])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserPermission {
+  userId       String
+  permissionId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([userId, permissionId])
 }
 
 model ServiceFor {

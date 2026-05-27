@@ -3,6 +3,7 @@ import { env } from "../config/env";
 import { apiRateLimiter } from "../middleware/rate-limit";
 import { accessControlRouter } from "./access-control.route";
 import { aiRouter } from "./ai.route";
+import { applicationUsersRouter } from "./application-users.route";
 import { authRouter } from "./auth.route";
 import { dashboardRouter } from "./dashboard.route";
 import { garageRouter } from "./garage.route";
@@ -11,6 +12,7 @@ import { notificationsRouter } from "./notifications.route";
 import { healthRouter } from "./health.route";
 import { issueCategoriesRouter } from "./issue-categories.route";
 import { masterRouter } from "./master.route";
+import { permissionsRouter, rolesRouter } from "./permissions.route";
 import { profileRouter } from "./profile.route";
 import { successMetricsRouter } from "./success-metrics.route";
 import { ticketsRouter } from "./tickets.route";
@@ -30,6 +32,9 @@ apiRouter.use("/master", masterRouter);
 apiRouter.use("/garage", garageRouter);
 apiRouter.use(userHistoryRouter);
 apiRouter.use(usersRouter);
+apiRouter.use(applicationUsersRouter);
+apiRouter.use(rolesRouter);
+apiRouter.use(permissionsRouter);
 apiRouter.use(ticketsRouter);
 apiRouter.use(notificationsRouter);
 apiRouter.use(workersRouter);
@@ -41,4 +46,4 @@ const rootRouter = Router();
 rootRouter.use(env.apiPrefix, apiRateLimiter, apiRouter);
 
 export { rootRouter };
-
+
