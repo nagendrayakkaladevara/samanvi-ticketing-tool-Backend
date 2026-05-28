@@ -3,6 +3,7 @@ import {
   DEFAULT_ROLE_PERMISSION_KEYS,
   PERMISSION_CATALOG,
   permissionKey,
+  USE_ROLE_PERMISSION_TEMPLATES,
 } from "./permission-catalog";
 import { resolvePermissionIdsFromKeys } from "./permissions";
 
@@ -37,6 +38,10 @@ export async function seedDefaultRolePermissions(
   });
 
   for (const role of roles) {
+    if (!USE_ROLE_PERMISSION_TEMPLATES && role.code !== "admin") {
+      continue;
+    }
+
     const keys = DEFAULT_ROLE_PERMISSION_KEYS[role.code];
     if (!keys || keys.length === 0) {
       continue;

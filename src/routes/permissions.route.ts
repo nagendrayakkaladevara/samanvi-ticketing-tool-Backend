@@ -4,6 +4,7 @@ import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, notFound } from "../core/errors/http-errors";
 import { buildPermissionTree } from "../lib/permission-catalog";
 import { prisma } from "../lib/prisma";
+import { getRoleDisplayPermissions } from "../lib/permissions";
 import { requireAuth, requirePermission } from "../middleware/auth";
 
 const permissionsRouter = Router();
@@ -102,13 +103,18 @@ rolesRouter.get(
     res.status(200).json({
       success: true,
       data: {
-        items: roles.map((role) => ({
-          id: role.id,
-          code: role.code,
-          label: role.label,
-          userCount: role._count.users,
-          permissions: role.rolePermissions.map((row) => row.permission),
-        })),
+        items: await Promise.all(
+          roles.map(async (role) => ({
+            id: role.id,
+            code: role.code,
+            label: role.label,
+            userCount: role._count.users,
+            permissions: await getRoleDisplayPermissions(
+              role.code,
+              role.rolePermissions,
+            ),
+          })),
+        ),
       },
     });
   }),
@@ -159,7 +165,10 @@ rolesRouter.get(
         code: role.code,
         label: role.label,
         userCount: role._count.users,
-        permissions: role.rolePermissions.map((row) => row.permission),
+        permissions: await getRoleDisplayPermissions(
+          role.code,
+          role.rolePermissions,
+        ),
       },
     });
   }),
@@ -232,7 +241,10 @@ rolesRouter.put(
         id: updatedRole.id,
         code: updatedRole.code,
         label: updatedRole.label,
-        permissions: updatedRole.rolePermissions.map((row) => row.permission),
+        permissions: await getRoleDisplayPermissions(
+          updatedRole.code,
+          updatedRole.rolePermissions,
+        ),
       },
     });
   }),

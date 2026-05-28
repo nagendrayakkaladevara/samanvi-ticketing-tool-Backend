@@ -156,6 +156,13 @@ export const LEGACY_FEATURE_PERMISSIONS: Record<Feature, PermissionKey[]> = {
   ).map(({ module, submodule, action }) => ({ module, submodule, action })),
 };
 
+/**
+ * When true, non-admin users inherit permissions from their role template
+ * (RolePermission rows). Set false until default templates are managed via admin UI.
+ * Admin role permissions are always seeded and always display the full catalog.
+ */
+export const USE_ROLE_PERMISSION_TEMPLATES = false;
+
 /** Default role → permission keys seeded on first run (mirrors legacy matrix). */
 export const DEFAULT_ROLE_PERMISSION_KEYS: Record<string, PermissionKey[]> = {
   admin: PERMISSION_CATALOG.map(({ module, submodule, action }) => ({

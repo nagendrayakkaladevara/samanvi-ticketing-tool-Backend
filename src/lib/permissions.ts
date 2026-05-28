@@ -1,13 +1,10 @@
 import type { RoleCode as PrismaRoleCode } from "@prisma/client";
-import {
-  canAccessFeature as canAccessLegacyFeature,
-  type Feature,
-  type RoleCode,
-} from "../auth/roles";
+import { type Feature, type RoleCode } from "../auth/roles";
 import { prisma } from "./prisma";
 import {
   LEGACY_FEATURE_PERMISSIONS,
   permissionKey,
+  USE_ROLE_PERMISSION_TEMPLATES,
   type PermissionKey,
 } from "./permission-catalog";
 
@@ -21,8 +18,43 @@ export interface EffectivePermission {
   source: "role" | "user";
 }
 
-function isAdminRole(roleCode: string): boolean {
+export function isAdminRole(roleCode: string): boolean {
   return roleCode === "admin";
+}
+
+const permissionSelect = {
+  id: true,
+  module: true,
+  submodule: true,
+  action: true,
+  label: true,
+  sortOrder: true,
+} as const;
+
+export async function getAllPermissions() {
+  return prisma.permission.findMany({
+    orderBy: [{ module: "asc" }, { sortOrder: "asc" }],
+    select: permissionSelect,
+  });
+}
+
+export async function getRoleDisplayPermissions(
+  roleCode: string,
+  rolePermissions: Array<{
+    permission: {
+      id: string;
+      module: string;
+      submodule: string;
+      action: string;
+      label: string;
+    };
+  }>,
+) {
+  if (isAdminRole(roleCode)) {
+    return getAllPermissions();
+  }
+
+  return rolePermissions.map((row) => row.permission);
 }
 
 function uniquePermissionKeys(keys: PermissionKey[]): PermissionKey[] {
@@ -44,9 +76,7 @@ export async function getUserEffectivePermissions(
   roleCode: PrismaRoleCode | RoleCode,
 ): Promise<EffectivePermission[]> {
   if (isAdminRole(roleCode)) {
-    const all = await prisma.permission.findMany({
-      orderBy: [{ module: "asc" }, { sortOrder: "asc" }],
-    });
+    const all = await getAllPermissions();
     return all.map((permission) => ({
       id: permission.id,
       module: permission.module,
@@ -84,17 +114,19 @@ export async function getUserEffectivePermissions(
 
   const merged = new Map<string, EffectivePermission>();
 
-  for (const row of user.role.rolePermissions) {
-    const permission = row.permission;
-    merged.set(permissionKey(permission), {
-      id: permission.id,
-      module: permission.module,
-      submodule: permission.submodule,
-      action: permission.action,
-      label: permission.label,
-      key: permissionKey(permission),
-      source: "role",
-    });
+  if (USE_ROLE_PERMISSION_TEMPLATES) {
+    for (const row of user.role.rolePermissions) {
+      const permission = row.permission;
+      merged.set(permissionKey(permission), {
+        id: permission.id,
+        module: permission.module,
+        submodule: permission.submodule,
+        action: permission.action,
+        label: permission.label,
+        key: permissionKey(permission),
+        source: "role",
+      });
+    }
   }
 
   for (const row of user.userPermissions) {
@@ -157,17 +189,7 @@ export async function userHasFeatureAccess(
   }
 
   const requiredKeys = LEGACY_FEATURE_PERMISSIONS[feature];
-  const hasDbPermissions = await userHasAnyPermission(
-    userId,
-    roleCode,
-    requiredKeys,
-  );
-  if (hasDbPermissions) {
-    return true;
-  }
-
-  // Fallback while roles are being migrated to DB permissions
-  return canAccessLegacyFeature(roleCode as RoleCode, feature);
+  return userHasAnyPermission(userId, roleCode, requiredKeys);
 }
 
 export async function syncUserPermissions(
