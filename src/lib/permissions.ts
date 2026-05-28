@@ -1,5 +1,9 @@
 import type { RoleCode as PrismaRoleCode } from "@prisma/client";
-import { type Feature, type RoleCode } from "../auth/roles";
+import {
+  canAccessFeature as canAccessLegacyFeature,
+  type Feature,
+  type RoleCode,
+} from "../auth/roles";
 import { prisma } from "./prisma";
 import {
   LEGACY_FEATURE_PERMISSIONS,
@@ -31,6 +35,8 @@ const permissionSelect = {
   sortOrder: true,
 } as const;
 
+export const roleDisplayPermissionSelect = permissionSelect;
+
 export async function getAllPermissions() {
   return prisma.permission.findMany({
     orderBy: [{ module: "asc" }, { sortOrder: "asc" }],
@@ -38,8 +44,7 @@ export async function getAllPermissions() {
   });
 }
 
-export async function getRoleDisplayPermissions(
-  roleCode: string,
+export function getRoleDisplayPermissions(
   rolePermissions: Array<{
     permission: {
       id: string;
@@ -47,13 +52,10 @@ export async function getRoleDisplayPermissions(
       submodule: string;
       action: string;
       label: string;
+      sortOrder: number;
     };
   }>,
 ) {
-  if (isAdminRole(roleCode)) {
-    return getAllPermissions();
-  }
-
   return rolePermissions.map((row) => row.permission);
 }
 
@@ -189,7 +191,17 @@ export async function userHasFeatureAccess(
   }
 
   const requiredKeys = LEGACY_FEATURE_PERMISSIONS[feature];
-  return userHasAnyPermission(userId, roleCode, requiredKeys);
+  const hasDbPermissions = await userHasAnyPermission(
+    userId,
+    roleCode,
+    requiredKeys,
+  );
+  if (hasDbPermissions) {
+    return true;
+  }
+
+  // Fallback while roles are being migrated to DB permissions
+  return canAccessLegacyFeature(roleCode as RoleCode, feature);
 }
 
 export async function syncUserPermissions(

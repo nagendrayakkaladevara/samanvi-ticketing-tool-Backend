@@ -4,7 +4,10 @@ import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, notFound } from "../core/errors/http-errors";
 import { buildPermissionTree } from "../lib/permission-catalog";
 import { prisma } from "../lib/prisma";
-import { getRoleDisplayPermissions } from "../lib/permissions";
+import {
+  getRoleDisplayPermissions,
+  roleDisplayPermissionSelect,
+} from "../lib/permissions";
 import { requireAuth, requirePermission } from "../middleware/auth";
 
 const permissionsRouter = Router();
@@ -84,13 +87,7 @@ rolesRouter.get(
         rolePermissions: {
           select: {
             permission: {
-              select: {
-                id: true,
-                module: true,
-                submodule: true,
-                action: true,
-                label: true,
-              },
+              select: roleDisplayPermissionSelect,
             },
           },
         },
@@ -103,18 +100,13 @@ rolesRouter.get(
     res.status(200).json({
       success: true,
       data: {
-        items: await Promise.all(
-          roles.map(async (role) => ({
-            id: role.id,
-            code: role.code,
-            label: role.label,
-            userCount: role._count.users,
-            permissions: await getRoleDisplayPermissions(
-              role.code,
-              role.rolePermissions,
-            ),
-          })),
-        ),
+        items: roles.map((role) => ({
+          id: role.id,
+          code: role.code,
+          label: role.label,
+          userCount: role._count.users,
+          permissions: getRoleDisplayPermissions(role.rolePermissions),
+        })),
       },
     });
   }),
@@ -138,13 +130,7 @@ rolesRouter.get(
         rolePermissions: {
           select: {
             permission: {
-              select: {
-                id: true,
-                module: true,
-                submodule: true,
-                action: true,
-                label: true,
-              },
+              select: roleDisplayPermissionSelect,
             },
           },
         },
@@ -165,10 +151,7 @@ rolesRouter.get(
         code: role.code,
         label: role.label,
         userCount: role._count.users,
-        permissions: await getRoleDisplayPermissions(
-          role.code,
-          role.rolePermissions,
-        ),
+        permissions: getRoleDisplayPermissions(role.rolePermissions),
       },
     });
   }),
@@ -222,13 +205,7 @@ rolesRouter.put(
         rolePermissions: {
           select: {
             permission: {
-              select: {
-                id: true,
-                module: true,
-                submodule: true,
-                action: true,
-                label: true,
-              },
+              select: roleDisplayPermissionSelect,
             },
           },
         },
@@ -241,10 +218,7 @@ rolesRouter.put(
         id: updatedRole.id,
         code: updatedRole.code,
         label: updatedRole.label,
-        permissions: await getRoleDisplayPermissions(
-          updatedRole.code,
-          updatedRole.rolePermissions,
-        ),
+        permissions: getRoleDisplayPermissions(updatedRole.rolePermissions),
       },
     });
   }),
