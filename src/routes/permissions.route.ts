@@ -97,17 +97,22 @@ rolesRouter.get(
       },
     });
 
+    const items = await Promise.all(
+      roles.map(async (role) => ({
+        id: role.id,
+        code: role.code,
+        label: role.label,
+        userCount: role._count.users,
+        permissions: await getRoleDisplayPermissions(
+          role.code,
+          role.rolePermissions,
+        ),
+      })),
+    );
+
     res.status(200).json({
       success: true,
-      data: {
-        items: roles.map((role) => ({
-          id: role.id,
-          code: role.code,
-          label: role.label,
-          userCount: role._count.users,
-          permissions: getRoleDisplayPermissions(role.rolePermissions),
-        })),
-      },
+      data: { items },
     });
   }),
 );
@@ -151,7 +156,10 @@ rolesRouter.get(
         code: role.code,
         label: role.label,
         userCount: role._count.users,
-        permissions: getRoleDisplayPermissions(role.rolePermissions),
+        permissions: await getRoleDisplayPermissions(
+          role.code,
+          role.rolePermissions,
+        ),
       },
     });
   }),
@@ -218,7 +226,10 @@ rolesRouter.put(
         id: updatedRole.id,
         code: updatedRole.code,
         label: updatedRole.label,
-        permissions: getRoleDisplayPermissions(updatedRole.rolePermissions),
+        permissions: await getRoleDisplayPermissions(
+          updatedRole.code,
+          updatedRole.rolePermissions,
+        ),
       },
     });
   }),

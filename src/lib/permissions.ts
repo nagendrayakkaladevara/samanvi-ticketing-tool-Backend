@@ -44,7 +44,8 @@ export async function getAllPermissions() {
   });
 }
 
-export function getRoleDisplayPermissions(
+export async function getRoleDisplayPermissions(
+  roleCode: string,
   rolePermissions: Array<{
     permission: {
       id: string;
@@ -56,6 +57,10 @@ export function getRoleDisplayPermissions(
     };
   }>,
 ) {
+  if (isAdminRole(roleCode)) {
+    return getAllPermissions();
+  }
+
   return rolePermissions.map((row) => row.permission);
 }
 
