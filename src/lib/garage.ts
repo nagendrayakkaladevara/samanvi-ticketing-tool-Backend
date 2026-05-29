@@ -155,7 +155,8 @@ export const allowedRepairJobStatusTransitions: Record<
     RepairJobStatus.assigned,
     RepairJobStatus.cancelled,
   ],
-  [RepairJobStatus.completed]: [],
+  [RepairJobStatus.completed]: [RepairJobStatus.closed],
+  [RepairJobStatus.closed]: [],
   [RepairJobStatus.cancelled]: [],
 };
 

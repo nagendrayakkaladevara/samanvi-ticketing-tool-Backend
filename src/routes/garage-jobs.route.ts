@@ -1,5 +1,6 @@
 import {
   Prisma,
+  RepairJobActivityType,
   RepairJobPriority,
   RepairJobStatus,
   RoleCode,
@@ -21,6 +22,22 @@ import { requireAuth, requireFeature } from "../middleware/auth";
 
 const isoDateStringSchema = z.string().datetime();
 
+const repairJobActivityLogSelect = {
+  id: true,
+  actionType: true,
+  fromStatus: true,
+  toStatus: true,
+  note: true,
+  createdAt: true,
+  actor: {
+    select: {
+      id: true,
+      username: true,
+      displayName: true,
+    },
+  },
+} satisfies Prisma.RepairJobActivityLogSelect;
+
 const repairJobSelect = {
   id: true,
   jobIdNumber: true,
@@ -28,6 +45,7 @@ const repairJobSelect = {
   priority: true,
   description: true,
   status: true,
+  closedAt: true,
   isRepeatJob: true,
   previousJobId: true,
   repeatScheduledFor: true,
@@ -98,6 +116,10 @@ const repairJobSelect = {
       },
     },
   },
+  activityLogs: {
+    orderBy: [{ createdAt: "desc" }],
+    select: repairJobActivityLogSelect,
+  },
 } satisfies Prisma.RepairJobSelect;
 
 type RepairJobRecord = Prisma.RepairJobGetPayload<{
@@ -142,6 +164,7 @@ const updateRepairJobSchema = z
     assignedToOfficeStaffId: z.string().trim().min(1).nullable().optional(),
     description: z.string().trim().min(1).optional(),
     status: z.nativeEnum(RepairJobStatus).optional(),
+    note: z.string().trim().min(1).max(2_000).optional(),
     scheduleRepeatFor: isoDateStringSchema.optional(),
   })
   .refine(
@@ -161,6 +184,22 @@ const addRepairJobPartSchema = z.object({
   repairPartId: z.string().trim().min(1),
   quantity: z.coerce.number().int().min(1).default(1),
 });
+
+const createRepairJobCommentSchema = z.object({
+  note: z.string().trim().min(1).max(2_000),
+});
+
+function repairJobStatusActivityType(
+  toStatus: RepairJobStatus,
+): RepairJobActivityType {
+  if (toStatus === RepairJobStatus.closed) {
+    return RepairJobActivityType.closed;
+  }
+  if (toStatus === RepairJobStatus.cancelled) {
+    return RepairJobActivityType.cancelled;
+  }
+  return RepairJobActivityType.status_changed;
+}
 
 const jobsRouter = Router();
 
@@ -406,7 +445,7 @@ jobsRouter.post(
     const job = await prisma.$transaction(async (tx) => {
       const jobIdNumber = await generateRepairJobIdNumber(tx);
 
-      return tx.repairJob.create({
+      const createdJob = await tx.repairJob.create({
         data: {
           jobIdNumber,
           busId,
@@ -419,6 +458,20 @@ jobsRouter.post(
           status: initialStatus,
           createdById: req.user!.sub,
         },
+        select: { id: true },
+      });
+
+      await tx.repairJobActivityLog.create({
+        data: {
+          repairJobId: createdJob.id,
+          actorUserId: req.user!.sub,
+          actionType: RepairJobActivityType.created,
+          toStatus: initialStatus,
+        },
+      });
+
+      return tx.repairJob.findUniqueOrThrow({
+        where: { id: createdJob.id },
         select: repairJobSelect,
       });
     });
@@ -481,13 +534,31 @@ jobsRouter.patch(
       }
     }
 
-    if (parsedBody.data.status) {
+    if (parsedBody.data.status !== undefined) {
       const allowed = allowedRepairJobStatusTransitions[existing.status];
       if (!allowed.includes(parsedBody.data.status)) {
         throw badRequest(
           `Cannot transition repair job from ${existing.status} to ${parsedBody.data.status}`,
         );
       }
+    }
+
+    if (
+      parsedBody.data.status === RepairJobStatus.completed &&
+      !parsedBody.data.note
+    ) {
+      throw badRequest(
+        "A note is required before changing status to Completed. Please add a short completion note and try again.",
+      );
+    }
+
+    if (
+      parsedBody.data.status === RepairJobStatus.on_hold &&
+      !parsedBody.data.note
+    ) {
+      throw badRequest(
+        "A note is required before changing status to On Hold. Please explain why the job is on hold and try again.",
+      );
     }
 
     if (parsedBody.data.scheduleRepeatFor) {
@@ -523,19 +594,101 @@ jobsRouter.patch(
     }
     if (parsedBody.data.status !== undefined) {
       updateData.status = parsedBody.data.status;
+      if (parsedBody.data.status === RepairJobStatus.closed) {
+        updateData.closedAt = new Date();
+      }
     }
     if (parsedBody.data.scheduleRepeatFor !== undefined) {
       updateData.repeatScheduledFor = new Date(parsedBody.data.scheduleRepeatFor);
       updateData.repeatProcessedAt = null;
     }
 
-    const job = await prisma.repairJob.update({
-      where: { id: existing.id },
-      data: updateData,
-      select: repairJobSelect,
+    const job = await prisma.$transaction(async (tx) => {
+      await tx.repairJob.update({
+        where: { id: existing.id },
+        data: updateData,
+      });
+
+      if (parsedBody.data.status !== undefined) {
+        await tx.repairJobActivityLog.create({
+          data: {
+            repairJobId: existing.id,
+            actorUserId: req.user!.sub,
+            actionType: repairJobStatusActivityType(parsedBody.data.status),
+            fromStatus: existing.status,
+            toStatus: parsedBody.data.status,
+            note: parsedBody.data.note,
+          },
+        });
+      }
+
+      return tx.repairJob.findUniqueOrThrow({
+        where: { id: existing.id },
+        select: repairJobSelect,
+      });
     });
 
     res.status(200).json({ success: true, data: serializeRepairJob(job) });
+  }),
+);
+
+jobsRouter.get(
+  "/jobs/:jobId/timeline",
+  asyncHandler(async (req, res) => {
+    if (!req.user) {
+      throw badRequest("Authenticated user context is required");
+    }
+
+    const jobId = assertJobId(req.params.jobId);
+    await findVisibleRepairJobOrThrow(jobId);
+
+    const activity = await prisma.repairJobActivityLog.findMany({
+      where: { repairJobId: jobId },
+      orderBy: [{ createdAt: "asc" }],
+      select: repairJobActivityLogSelect,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        jobId,
+        items: activity,
+      },
+    });
+  }),
+);
+
+jobsRouter.post(
+  "/jobs/:jobId/comments",
+  asyncHandler(async (req, res) => {
+    if (!req.user) {
+      throw badRequest("Authenticated user context is required");
+    }
+
+    const jobId = assertJobId(req.params.jobId);
+    const parsedBody = createRepairJobCommentSchema.safeParse(req.body);
+    if (!parsedBody.success) {
+      throw badRequest("Invalid comment payload", {
+        issues: parsedBody.error.issues,
+      });
+    }
+
+    await findVisibleRepairJobOrThrow(jobId);
+
+    const comment = await prisma.repairJobActivityLog.create({
+      data: {
+        repairJobId: jobId,
+        actorUserId: req.user.sub,
+        actionType: RepairJobActivityType.commented,
+        note: parsedBody.data.note,
+      },
+      select: repairJobActivityLogSelect,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: comment,
+    });
   }),
 );
 
@@ -581,6 +734,34 @@ jobsRouter.post(
     });
 
     res.status(201).json({ success: true, data: serializeRepairJob(job!) });
+  }),
+);
+
+jobsRouter.delete(
+  "/jobs/:jobId/parts/:lineId",
+  requireFeature("manage_garage_job"),
+  asyncHandler(async (req, res) => {
+    const jobId = assertJobId(req.params.jobId);
+    const lineId = assertJobId(req.params.lineId);
+
+    await findVisibleRepairJobOrThrow(jobId);
+
+    const existingLine = await prisma.repairJobPart.findFirst({
+      where: { id: lineId, repairJobId: jobId },
+      select: { id: true },
+    });
+    if (!existingLine) {
+      throw notFound("Repair job part not found");
+    }
+
+    await prisma.repairJobPart.delete({ where: { id: lineId } });
+
+    const job = await prisma.repairJob.findUnique({
+      where: { id: jobId },
+      select: repairJobSelect,
+    });
+
+    res.json({ success: true, data: serializeRepairJob(job!) });
   }),
 );
 
