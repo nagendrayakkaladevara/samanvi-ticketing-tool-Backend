@@ -70,7 +70,7 @@ These are the most recent updates to repair jobs (migration `20260529120000_repa
 ### 2. Activity log & timeline
 
 - New model: `RepairJobActivityLog`.
-- New enum: `RepairJobActivityType` — `created`, `status_changed`, `commented`, `closed`, `cancelled`.
+- New enum: `RepairJobActivityType` — `created`, `status_changed`, `commented`, `closed`, `cancelled`, `part_added`, `part_removed`, `repeat_scheduled`, `repeat_created`.
 - Every job create and status change writes an activity log entry.
 - Job detail responses now include `activityLogs` (newest first).
 - New endpoint: `GET /garage/jobs/:jobId/timeline` — chronological activity feed.
@@ -146,10 +146,11 @@ The note is saved on the activity log entry for that status change.
 |-------|------|-------------|
 | `repairJobId` | string | FK to RepairJob |
 | `actorUserId` | string | FK to User who performed the action |
-| `actionType` | enum | `created`, `status_changed`, `commented`, `closed`, `cancelled` |
+| `actionType` | enum | See [Activity log display](#activity-log-display) |
 | `fromStatus` | enum? | Previous status (status changes only) |
 | `toStatus` | enum? | New status (create / status changes) |
 | `note` | string? | Comment or status-change note |
+| `metadata` | object? | Event-specific payload (parts, repeat scheduling, repeat creation) |
 | `createdAt` | datetime | |
 
 ### RepairCategory
@@ -334,7 +335,7 @@ GET /api/v1/garage/jobs/my?assignedToOfficeStaffId=<id>&isRepeatJob=true
 | One repeat per schedule | Each `scheduleRepeatFor` creates at most one follow-up job (`repeatProcessedAt` prevents re-processing) |
 | No automatic polling | Repeat jobs are only processed when a job list/get API is called |
 | No parts copy | Parts must be added separately on the new job |
-| No activity log on auto-create | The repeat job is created directly; no `RepairJobActivityLog` entry is written for the auto-create (unlike manual `POST /jobs`) |
+| Activity on auto-create | Source job gets `repeat_created`; new repeat job gets `created` with `metadata.isRepeatJob` and `metadata.previousJobIdNumber` |
 | No recurring chain by default | The new repeat job does not inherit a schedule; schedule again on the new job if another follow-up is needed |
 
 ### Typical use cases
@@ -631,7 +632,8 @@ PATCH /api/v1/garage/jobs/:jobId
 
 - Status change → activity log entry (`status_changed`, `closed`, or `cancelled`).
 - Status → `closed` → sets `closedAt`.
-- `scheduleRepeatFor` → resets `repeatProcessedAt` to null.
+- `scheduleRepeatFor` → resets `repeatProcessedAt` to null and writes `repeat_scheduled` on the timeline.
+- Add/remove part → `part_added` / `part_removed` on the timeline (see [Job parts](#job-parts)).
 
 ---
 
@@ -978,13 +980,17 @@ See [Job parts](#job-parts) for adding parts to jobs, price snapshots, and suppo
 
 ### Activity log display
 
-| `actionType` | Suggested UI label |
-|--------------|-------------------|
-| `created` | Job created |
-| `status_changed` | Status changed (`fromStatus` → `toStatus`) |
-| `commented` | Comment added |
-| `closed` | Job closed |
-| `cancelled` | Job cancelled |
+| `actionType` | Suggested UI label | `metadata` (when present) |
+|--------------|-------------------|---------------------------|
+| `created` | Job created | Repeat jobs: `{ previousJobId, previousJobIdNumber, isRepeatJob }` |
+| `status_changed` | Status changed (`fromStatus` → `toStatus`) | — |
+| `commented` | Comment added | — |
+| `closed` | Job closed | — |
+| `cancelled` | Job cancelled | — |
+| `part_added` | Part added | `{ repairJobPartId, repairPartId, partName, quantity, unitPrice }` |
+| `part_removed` | Part removed | Same shape as `part_added` (snapshot at removal time) |
+| `repeat_scheduled` | Repeat job scheduled | `{ scheduledFor }` (ISO datetime) |
+| `repeat_created` | Repeat job created | `{ relatedJobId, relatedJobIdNumber }` |
 
 ### Error cases to handle
 
@@ -1009,6 +1015,14 @@ npx prisma migrate deploy
 ```
 
 Migration: `20260529120000_repair_job_comments_and_closed_status`
+
+Apply timeline event migration for parts and repeat logging:
+
+```bash
+npx prisma migrate deploy
+```
+
+Migration: `20260530120000_repair_job_timeline_events`
 
 ---
 

@@ -73,6 +73,10 @@ enum RepairJobActivityType {
   commented
   closed
   cancelled
+  part_added
+  part_removed
+  repeat_scheduled
+  repeat_created
 }
 
 enum RepairJobPriority {
@@ -462,16 +466,17 @@ model RepairJobPart {
 }
 
 model RepairJobActivityLog {
-  id          String               @id @default(cuid())
+  id          String                @id @default(cuid())
   repairJobId String
-  repairJob   RepairJob            @relation(fields: [repairJobId], references: [id], onDelete: Cascade)
+  repairJob   RepairJob             @relation(fields: [repairJobId], references: [id], onDelete: Cascade)
   actorUserId String
-  actor       User                 @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  actor       User                  @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
   actionType  RepairJobActivityType
   fromStatus  RepairJobStatus?
   toStatus    RepairJobStatus?
   note        String?
-  createdAt   DateTime             @default(now())
+  metadata    Json?
+  createdAt   DateTime              @default(now())
 
   @@index([repairJobId, createdAt])
   @@index([actorUserId, createdAt(sort: Desc)])

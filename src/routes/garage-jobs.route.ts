@@ -15,6 +15,8 @@ import {
   generateRepairJobIdNumber,
   processDueRepeatJobs,
   repairJobNotDeletedWhere,
+  type RepairJobPartActivityMetadata,
+  type RepairJobRepeatScheduledMetadata,
 } from "../lib/garage";
 import { normalizeBusNumber, paginationMeta, paginationQuerySchema } from "../lib/master";
 import { prisma } from "../lib/prisma";
@@ -28,6 +30,7 @@ const repairJobActivityLogSelect = {
   fromStatus: true,
   toStatus: true,
   note: true,
+  metadata: true,
   createdAt: true,
   actor: {
     select: {
@@ -37,6 +40,14 @@ const repairJobActivityLogSelect = {
     },
   },
 } satisfies Prisma.RepairJobActivityLogSelect;
+
+type RepairJobActivityLogRecord = Prisma.RepairJobActivityLogGetPayload<{
+  select: typeof repairJobActivityLogSelect;
+}>;
+
+function serializeRepairJobActivityLog(log: RepairJobActivityLogRecord) {
+  return log;
+}
 
 const repairJobSelect = {
   id: true,
@@ -133,6 +144,7 @@ function serializeRepairJob(job: RepairJobRecord) {
       ...part,
       unitPrice: part.unitPrice.toString(),
     })),
+    activityLogs: job.activityLogs.map(serializeRepairJobActivityLog),
   };
 }
 
@@ -622,6 +634,19 @@ jobsRouter.patch(
         });
       }
 
+      if (parsedBody.data.scheduleRepeatFor !== undefined) {
+        await tx.repairJobActivityLog.create({
+          data: {
+            repairJobId: existing.id,
+            actorUserId: req.user!.sub,
+            actionType: RepairJobActivityType.repeat_scheduled,
+            metadata: {
+              scheduledFor: new Date(parsedBody.data.scheduleRepeatFor).toISOString(),
+            } satisfies RepairJobRepeatScheduledMetadata,
+          },
+        });
+      }
+
       return tx.repairJob.findUniqueOrThrow({
         where: { id: existing.id },
         select: repairJobSelect,
@@ -652,7 +677,7 @@ jobsRouter.get(
       success: true,
       data: {
         jobId,
-        items: activity,
+        items: activity.map(serializeRepairJobActivityLog),
       },
     });
   }),
@@ -687,7 +712,7 @@ jobsRouter.post(
 
     res.status(201).json({
       success: true,
-      data: comment,
+      data: serializeRepairJobActivityLog(comment),
     });
   }),
 );
@@ -710,22 +735,40 @@ jobsRouter.post(
 
     await findVisibleRepairJobOrThrow(jobId);
 
-    const part = await prisma.repairPart.findUnique({
+    const catalogPart = await prisma.repairPart.findUnique({
       where: { id: parsedBody.data.repairPartId },
-      select: { id: true, price: true },
+      select: { id: true, partName: true, price: true },
     });
-    if (!part) {
+    if (!catalogPart) {
       throw notFound("Repair part not found");
     }
 
-    await prisma.repairJobPart.create({
-      data: {
-        repairJobId: jobId,
-        repairPartId: part.id,
-        quantity: parsedBody.data.quantity,
-        unitPrice: part.price,
-        addedById: req.user.sub,
-      },
+    await prisma.$transaction(async (tx) => {
+      const line = await tx.repairJobPart.create({
+        data: {
+          repairJobId: jobId,
+          repairPartId: catalogPart.id,
+          quantity: parsedBody.data.quantity,
+          unitPrice: catalogPart.price,
+          addedById: req.user!.sub,
+        },
+        select: { id: true },
+      });
+
+      await tx.repairJobActivityLog.create({
+        data: {
+          repairJobId: jobId,
+          actorUserId: req.user!.sub,
+          actionType: RepairJobActivityType.part_added,
+          metadata: {
+            repairJobPartId: line.id,
+            repairPartId: catalogPart.id,
+            partName: catalogPart.partName,
+            quantity: parsedBody.data.quantity,
+            unitPrice: catalogPart.price.toString(),
+          } satisfies RepairJobPartActivityMetadata,
+        },
+      });
     });
 
     const job = await prisma.repairJob.findUnique({
@@ -741,6 +784,10 @@ jobsRouter.delete(
   "/jobs/:jobId/parts/:lineId",
   requireFeature("manage_garage_job"),
   asyncHandler(async (req, res) => {
+    if (!req.user) {
+      throw badRequest("Authenticated user context is required");
+    }
+
     const jobId = assertJobId(req.params.jobId);
     const lineId = assertJobId(req.params.lineId);
 
@@ -748,13 +795,40 @@ jobsRouter.delete(
 
     const existingLine = await prisma.repairJobPart.findFirst({
       where: { id: lineId, repairJobId: jobId },
-      select: { id: true },
+      select: {
+        id: true,
+        quantity: true,
+        unitPrice: true,
+        repairPart: {
+          select: {
+            id: true,
+            partName: true,
+          },
+        },
+      },
     });
     if (!existingLine) {
       throw notFound("Repair job part not found");
     }
 
-    await prisma.repairJobPart.delete({ where: { id: lineId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.repairJobActivityLog.create({
+        data: {
+          repairJobId: jobId,
+          actorUserId: req.user!.sub,
+          actionType: RepairJobActivityType.part_removed,
+          metadata: {
+            repairJobPartId: existingLine.id,
+            repairPartId: existingLine.repairPart.id,
+            partName: existingLine.repairPart.partName,
+            quantity: existingLine.quantity,
+            unitPrice: existingLine.unitPrice.toString(),
+          } satisfies RepairJobPartActivityMetadata,
+        },
+      });
+
+      await tx.repairJobPart.delete({ where: { id: lineId } });
+    });
 
     const job = await prisma.repairJob.findUnique({
       where: { id: jobId },

@@ -1,4 +1,8 @@
-import { Prisma, RepairJobStatus } from "@prisma/client";
+import {
+  Prisma,
+  RepairJobActivityType,
+  RepairJobStatus,
+} from "@prisma/client";
 import { prisma } from "./prisma";
 
 export const MAX_REPAIR_CATEGORY_DEPTH = 5;
@@ -77,6 +81,29 @@ export const repairJobNotDeletedWhere: Prisma.RepairJobWhereInput = {
   deletedAt: null,
 };
 
+export type RepairJobPartActivityMetadata = {
+  repairJobPartId: string;
+  repairPartId: string;
+  partName: string;
+  quantity: number;
+  unitPrice: string;
+};
+
+export type RepairJobRepeatScheduledMetadata = {
+  scheduledFor: string;
+};
+
+export type RepairJobRepeatCreatedMetadata = {
+  relatedJobId: string;
+  relatedJobIdNumber: string;
+};
+
+export type RepairJobRepeatSourceMetadata = {
+  previousJobId: string;
+  previousJobIdNumber: string;
+  isRepeatJob: true;
+};
+
 export async function processDueRepeatJobs(
   tx: Prisma.TransactionClient = prisma,
 ): Promise<number> {
@@ -89,6 +116,7 @@ export async function processDueRepeatJobs(
     },
     select: {
       id: true,
+      jobIdNumber: true,
       busId: true,
       odometerReading: true,
       repairCategoryId: true,
@@ -104,8 +132,11 @@ export async function processDueRepeatJobs(
 
   for (const source of dueJobs) {
     const jobIdNumber = await generateRepairJobIdNumber(tx);
+    const initialStatus = source.assignedToOfficeStaffId
+      ? RepairJobStatus.assigned
+      : RepairJobStatus.created;
 
-    await tx.repairJob.create({
+    const repeatJob = await tx.repairJob.create({
       data: {
         jobIdNumber,
         busId: source.busId,
@@ -115,12 +146,37 @@ export async function processDueRepeatJobs(
         reportedDriverId: source.reportedDriverId,
         assignedToOfficeStaffId: source.assignedToOfficeStaffId,
         description: source.description,
-        status: source.assignedToOfficeStaffId
-          ? RepairJobStatus.assigned
-          : RepairJobStatus.created,
+        status: initialStatus,
         createdById: source.createdById,
         isRepeatJob: true,
         previousJobId: source.id,
+      },
+      select: { id: true, jobIdNumber: true },
+    });
+
+    await tx.repairJobActivityLog.create({
+      data: {
+        repairJobId: source.id,
+        actorUserId: source.createdById,
+        actionType: RepairJobActivityType.repeat_created,
+        metadata: {
+          relatedJobId: repeatJob.id,
+          relatedJobIdNumber: repeatJob.jobIdNumber,
+        } satisfies RepairJobRepeatCreatedMetadata,
+      },
+    });
+
+    await tx.repairJobActivityLog.create({
+      data: {
+        repairJobId: repeatJob.id,
+        actorUserId: source.createdById,
+        actionType: RepairJobActivityType.created,
+        toStatus: initialStatus,
+        metadata: {
+          previousJobId: source.id,
+          previousJobIdNumber: source.jobIdNumber,
+          isRepeatJob: true,
+        } satisfies RepairJobRepeatSourceMetadata,
       },
     });
 
