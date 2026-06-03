@@ -86,6 +86,12 @@ enum RepairJobPriority {
   urgent
 }
 
+enum LinkedEmployeeType {
+  driver
+  helper
+  office_staff
+}
+
 model Role {
   id              String           @id @default(cuid())
   code            RoleCode         @unique
@@ -104,9 +110,16 @@ model User {
   mobileNumber       String?               @unique @db.VarChar(15)
   email              String?               @unique @db.VarChar(150)
   isActive           Boolean               @default(true)
-  roleId             String
-  role               Role                  @relation(fields: [roleId], references: [id], onDelete: Restrict)
-  userPermissions    UserPermission[]
+  roleId              String
+  role                Role                  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  linkedEmployeeType  LinkedEmployeeType?
+  linkedDriverId      String?               @unique
+  linkedDriver        Driver?               @relation(fields: [linkedDriverId], references: [id], onDelete: Restrict)
+  linkedHelperId      String?               @unique
+  linkedHelper        Helper?               @relation(fields: [linkedHelperId], references: [id], onDelete: Restrict)
+  linkedOfficeStaffId String?               @unique
+  linkedOfficeStaff   OfficeStaff?          @relation(fields: [linkedOfficeStaffId], references: [id], onDelete: Restrict)
+  userPermissions     UserPermission[]
   createdTickets     Ticket[]              @relation("TicketCreatedBy")
   assignedTickets    Ticket[]              @relation("TicketAssignedTo")
   assignmentActions  Ticket[]              @relation("TicketAssignedBy")
@@ -249,9 +262,10 @@ model Driver {
   dlFront              Bytes
   dlBack               Bytes
   upiScanner           Bytes?
-  reportedRepairJobs   RepairJob[]
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  reportedRepairJobs    RepairJob[]
+  linkedApplicationUser User?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 model Helper {
@@ -274,10 +288,11 @@ model Helper {
   dateOfLeaving     DateTime?
   remarks           String?   @db.VarChar(500)
   aadharCardFront   Bytes
-  aadharCardBack    Bytes
-  upiScanner        Bytes?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  aadharCardBack        Bytes
+  upiScanner            Bytes?
+  linkedApplicationUser User?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 model OfficeStaff {
@@ -303,9 +318,10 @@ model OfficeStaff {
   aadharCardFront   Bytes
   aadharCardBack    Bytes
   upiScanner        Bytes?
-  assignedRepairJobs RepairJob[]
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  assignedRepairJobs    RepairJob[]
+  linkedApplicationUser User?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 model IssueCategory {

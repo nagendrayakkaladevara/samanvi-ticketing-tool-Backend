@@ -1,10 +1,17 @@
-import { Prisma, RoleCode } from "@prisma/client";
+import { LinkedEmployeeType, Prisma, RoleCode } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { hashPassword } from "../auth/password";
 import { MANAGED_USER_TYPE_CODES } from "../auth/roles";
 import { asyncHandler } from "../core/http/async-handler";
 import { badRequest, conflict, notFound } from "../core/errors/http-errors";
+import {
+  applicationUserEmployeeSelect,
+  LINKED_EMPLOYEE_TYPES,
+  listLinkableEmployees,
+  resolveEmployeeLink,
+  serializeLinkedEmployee,
+} from "../lib/employee-link";
 import { prisma } from "../lib/prisma";
 import { toUserUniqueConflictError } from "../lib/prisma-user-unique";
 import { requireAuth, requirePermission } from "../middleware/auth";
@@ -21,12 +28,16 @@ const managedRoleCodeSchema = z.enum(MANAGED_USER_TYPE_CODES);
 
 const permissionIdsSchema = z.array(z.string().trim().min(1)).default([]);
 
+const linkedEmployeeTypeSchema = z.enum(LINKED_EMPLOYEE_TYPES);
+
 const createApplicationUserSchema = z.object({
   username: usernameSchema,
   fullName: z.string().trim().min(1).max(100),
   password: z.string().min(6).max(128),
   mobileNumber: mobileNumberSchema,
   userType: managedRoleCodeSchema,
+  employeeId: z.string().trim().min(1),
+  employeeType: linkedEmployeeTypeSchema,
   email: z.string().trim().email().max(150).optional(),
   isActive: z.boolean().optional(),
   permissionIds: permissionIdsSchema.optional(),
@@ -39,6 +50,8 @@ const updateApplicationUserSchema = z
     password: z.string().min(6).max(128).optional(),
     mobileNumber: mobileNumberSchema.optional(),
     userType: managedRoleCodeSchema.optional(),
+    employeeId: z.string().trim().min(1).optional(),
+    employeeType: linkedEmployeeTypeSchema.optional(),
     email: z.string().trim().email().max(150).nullable().optional(),
     isActive: z.boolean().optional(),
     permissionIds: permissionIdsSchema.optional(),
@@ -50,10 +63,18 @@ const updateApplicationUserSchema = z
       value.password !== undefined ||
       value.mobileNumber !== undefined ||
       value.userType !== undefined ||
+      value.employeeId !== undefined ||
+      value.employeeType !== undefined ||
       value.email !== undefined ||
       value.isActive !== undefined ||
       value.permissionIds !== undefined,
     { message: "At least one updatable field must be provided" },
+  )
+  .refine(
+    (value) =>
+      (value.employeeId === undefined && value.employeeType === undefined) ||
+      (value.employeeId !== undefined && value.employeeType !== undefined),
+    { message: "employeeId and employeeType must be provided together" },
   );
 
 const applicationUserListQuerySchema = z.object({
@@ -97,6 +118,7 @@ const applicationUserSelect = {
   },
   createdAt: true,
   updatedAt: true,
+  ...applicationUserEmployeeSelect,
 } satisfies Prisma.UserSelect;
 
 function serializeApplicationUser(
@@ -110,6 +132,7 @@ function serializeApplicationUser(
     email: user.email,
     isActive: user.isActive,
     userType: user.role,
+    linkedEmployee: serializeLinkedEmployee(user),
     permissions: user.userPermissions.map((row) => row.permission),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -138,6 +161,24 @@ applicationUsersRouter.get(
       data: {
         permissions,
       },
+    });
+  }),
+);
+
+applicationUsersRouter.get(
+  "/application-users/linkable-employees",
+  requirePermission({ module: "users", submodule: "", action: "view" }),
+  asyncHandler(async (req, res) => {
+    const excludeUserId =
+      typeof req.query.excludeUserId === "string" && req.query.excludeUserId.trim().length > 0
+        ? req.query.excludeUserId.trim()
+        : undefined;
+
+    const items = await listLinkableEmployees(excludeUserId);
+
+    res.status(200).json({
+      success: true,
+      data: { items },
     });
   }),
 );
@@ -282,6 +323,11 @@ applicationUsersRouter.post(
       }
     }
 
+    const employeeLink = await resolveEmployeeLink(
+      parsedBody.data.employeeType,
+      parsedBody.data.employeeId,
+    );
+
     try {
       const user = await prisma.user.create({
         data: {
@@ -292,6 +338,10 @@ applicationUsersRouter.post(
           email: parsedBody.data.email,
           isActive: parsedBody.data.isActive ?? true,
           roleId: role.id,
+          linkedEmployeeType: employeeLink.linkedEmployeeType,
+          linkedDriverId: employeeLink.linkedDriverId,
+          linkedHelperId: employeeLink.linkedHelperId,
+          linkedOfficeStaffId: employeeLink.linkedOfficeStaffId,
         },
         select: applicationUserSelect,
       });
@@ -370,8 +420,31 @@ applicationUsersRouter.patch(
       }
     }
 
+    let employeeLinkData:
+      | {
+          linkedEmployeeType: LinkedEmployeeType;
+          linkedDriverId: string | null;
+          linkedHelperId: string | null;
+          linkedOfficeStaffId: string | null;
+        }
+      | undefined;
+
+    if (parsedBody.data.employeeId && parsedBody.data.employeeType) {
+      const employeeLink = await resolveEmployeeLink(
+        parsedBody.data.employeeType,
+        parsedBody.data.employeeId,
+        { excludeUserId: userId },
+      );
+      employeeLinkData = {
+        linkedEmployeeType: employeeLink.linkedEmployeeType,
+        linkedDriverId: employeeLink.linkedDriverId,
+        linkedHelperId: employeeLink.linkedHelperId,
+        linkedOfficeStaffId: employeeLink.linkedOfficeStaffId,
+      };
+    }
+
     try {
-      const user = await prisma.user.update({
+      await prisma.user.update({
         where: { id: userId },
         data: {
           ...(parsedBody.data.fullName !== undefined
@@ -393,8 +466,8 @@ applicationUsersRouter.patch(
             ? { isActive: parsedBody.data.isActive }
             : {}),
           ...(roleId ? { roleId } : {}),
+          ...(employeeLinkData ?? {}),
         },
-        select: applicationUserSelect,
       });
 
       if (parsedBody.data.permissionIds !== undefined) {
