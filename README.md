@@ -29,3 +29,7 @@ npm run build
 npm start
 ```
 
+## Vercel deploy
+
+Vercel runs `npm run vercel-build`, which applies pending Prisma migrations then compiles TypeScript. Set `DATABASE_URL` in the Vercel project environment (Production and Preview as needed).
+
