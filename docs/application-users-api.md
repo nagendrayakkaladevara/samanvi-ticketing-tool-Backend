@@ -194,6 +194,7 @@ Returns effective permissions and tree for the logged-in user.
 2. Build navigation from modules where the user has any `view` action.
 3. Show action buttons (`Create`, `Edit`, `Delete`) based on matching permission keys.
 4. Backend routes enforce the same permissions via `requirePermission` / `requireFeature`.
+5. **Application user create form:** load `GET /application-users/linkable-employees` for the employee dropdown (`items[].name` as label, `items[].id` + `items[].employeeType` as value). On submit, send both `employeeId` and `employeeType` in the create payload. When editing, pass `?excludeUserId=<userId>` so the currently linked employee stays selectable.
 
 ### Example permission checks
 
