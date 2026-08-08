@@ -706,6 +706,48 @@ export function buildOpenApiSpec() {
           },
         },
       },
+      "/dashboard/master-counts": {
+        get: {
+          tags: ["Dashboard"],
+          summary:
+            "Master data counts for dashboard cards: Service For, Bus No, Service No, and active employees (driver, helper, office staff). Employees exclude records with dateOfLeaving set.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Master entity counts",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      success: { type: "boolean", example: true },
+                      data: {
+                        type: "object",
+                        properties: {
+                          serviceFor: { type: "integer" },
+                          busNo: { type: "integer" },
+                          serviceNo: { type: "integer" },
+                          employees: {
+                            type: "object",
+                            properties: {
+                              driver: { type: "integer" },
+                              helper: { type: "integer" },
+                              staff: { type: "integer" },
+                              total: { type: "integer" },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "401": { description: "Missing/invalid token" },
+            "403": { description: "Forbidden by role matrix" },
+          },
+        },
+      },
       "/metrics/success": {
         get: {
           tags: ["Metrics"],

@@ -581,4 +581,42 @@ dashboardRouter.get(
   }),
 );
 
+dashboardRouter.get(
+  "/dashboard/master-counts",
+  asyncHandler(async (_req, res) => {
+    const activeEmployeeWhere = { dateOfLeaving: null };
+
+    const [
+      serviceFor,
+      busNo,
+      serviceNo,
+      driver,
+      helper,
+      staff,
+    ] = await Promise.all([
+      prisma.serviceFor.count(),
+      prisma.bus.count(),
+      prisma.serviceNumber.count(),
+      prisma.driver.count({ where: activeEmployeeWhere }),
+      prisma.helper.count({ where: activeEmployeeWhere }),
+      prisma.officeStaff.count({ where: activeEmployeeWhere }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        serviceFor,
+        busNo,
+        serviceNo,
+        employees: {
+          driver,
+          helper,
+          staff,
+          total: driver + helper + staff,
+        },
+      },
+    });
+  }),
+);
+
 export { dashboardRouter };
