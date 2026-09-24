@@ -19,6 +19,8 @@ import { ticketsRouter } from "./tickets.route";
 import { userHistoryRouter } from "./user-history.route";
 import { usersRouter } from "./users.route";
 import { workersRouter } from "./workers.route";
+import { announcementsRouter } from "./announcements.route";
+import { mobileAnnouncementsRouter } from "./mobile-announcements.route";
 
 const apiRouter = Router();
 
@@ -41,6 +43,8 @@ apiRouter.use(workersRouter);
 apiRouter.use(dashboardRouter);
 apiRouter.use(successMetricsRouter);
 apiRouter.use(accessControlRouter);
+apiRouter.use("/announcements", announcementsRouter);
+apiRouter.use("/mobile/announcements", mobileAnnouncementsRouter);
 
 const rootRouter = Router();
 rootRouter.use(env.apiPrefix, apiRateLimiter, apiRouter);

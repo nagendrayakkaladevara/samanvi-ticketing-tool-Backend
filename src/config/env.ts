@@ -31,6 +31,12 @@ const envSchema = z.object({
   SMTP_PASS: z.string().trim().min(1).optional(),
   EMAIL_FROM: z.string().trim().email().optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
+  BLOB_READ_WRITE_TOKEN: z.string().trim().min(1).optional(),
+  AUDIO_MAX_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(50 * 1024 * 1024),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
@@ -65,6 +71,8 @@ export const env = {
   smtpPass: parsedEnv.data.SMTP_PASS,
   emailFrom: parsedEnv.data.EMAIL_FROM,
   appPublicUrl: parsedEnv.data.APP_PUBLIC_URL,
+  blobReadWriteToken: parsedEnv.data.BLOB_READ_WRITE_TOKEN,
+  audioMaxSizeBytes: parsedEnv.data.AUDIO_MAX_SIZE_BYTES,
 } as const;
 
 export function isSmtpConfigured(): boolean {
