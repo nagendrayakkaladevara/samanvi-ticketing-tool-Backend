@@ -89,6 +89,18 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { module: "users", submodule: "", action: "edit", label: "Edit", sortOrder: 720 },
   { module: "users", submodule: "", action: "delete", label: "Delete", sortOrder: 730 },
   { module: "users", submodule: "", action: "manage_permissions", label: "Manage Permissions", sortOrder: 740 },
+  // Announcements — routes
+  { module: "announcements", submodule: "routes", action: "view", label: "View", sortOrder: 800 },
+  { module: "announcements", submodule: "routes", action: "create", label: "Create New", sortOrder: 810 },
+  { module: "announcements", submodule: "routes", action: "edit", label: "Edit", sortOrder: 820 },
+  { module: "announcements", submodule: "routes", action: "delete", label: "Archive", sortOrder: 830 },
+  { module: "announcements", submodule: "routes", action: "assign_audio", label: "Assign Audio", sortOrder: 840 },
+  // Announcements — audio library and settings
+  { module: "announcements", submodule: "audios", action: "view", label: "View", sortOrder: 850 },
+  { module: "announcements", submodule: "audios", action: "upload", label: "Upload", sortOrder: 860 },
+  { module: "announcements", submodule: "audios", action: "edit", label: "Edit", sortOrder: 870 },
+  { module: "announcements", submodule: "audios", action: "delete", label: "Archive", sortOrder: 880 },
+  { module: "announcements", submodule: "settings", action: "edit", label: "Edit", sortOrder: 890 },
 ];
 
 export const MODULE_LABELS: Record<string, string> = {
@@ -97,6 +109,7 @@ export const MODULE_LABELS: Record<string, string> = {
   tickets: "Tickets",
   issue_categories: "Issue Categories",
   users: "Application Users",
+  announcements: "Announcements",
 };
 
 export const SUBMODULE_LABELS: Record<string, string> = {
@@ -110,6 +123,9 @@ export const SUBMODULE_LABELS: Record<string, string> = {
   repair_category: "Repair Category",
   repair_part: "Repair Part",
   repair_job: "Repair Job",
+  routes: "Routes",
+  audios: "Audio Library",
+  settings: "Settings",
 };
 
 /** Maps legacy feature flags to one or more permission keys for backward compatibility. */

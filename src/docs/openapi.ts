@@ -58,6 +58,9 @@ export function buildOpenApiSpec() {
       { name: "Master - Office Staff" },
       { name: "Dashboard" },
       { name: "Metrics" },
+      { name: "Announcement Routes" },
+      { name: "Announcement Audio" },
+      { name: "Mobile Announcements" },
     ],
     paths: {
       "/health": {
@@ -1484,6 +1487,97 @@ export function buildOpenApiSpec() {
             { in: "path", name: "staffId", required: true, schema: { type: "string" } },
           ],
           responses: { "200": { description: "Deleted" } },
+        },
+      },
+      "/announcements/routes": {
+        get: {
+          tags: ["Announcement Routes"],
+          summary: "List announcement routes",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Paginated route list" } },
+        },
+        post: {
+          tags: ["Announcement Routes"],
+          summary: "Create a draft announcement route",
+          security: [{ bearerAuth: [] }],
+          responses: { "201": { description: "Route created" } },
+        },
+      },
+      "/announcements/routes/{routeId}": {
+        get: {
+          tags: ["Announcement Routes"],
+          summary: "Get route and ordered audio assignments",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Route detail" } },
+        },
+        patch: {
+          tags: ["Announcement Routes"],
+          summary: "Update route using optimistic concurrency",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Route updated" }, "409": { description: "Stale version" } },
+        },
+        delete: {
+          tags: ["Announcement Routes"],
+          summary: "Archive route",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Route archived" } },
+        },
+      },
+      "/announcements/routes/{routeId}/audios": {
+        put: {
+          tags: ["Announcement Routes"],
+          summary: "Replace and reorder a route's stop announcements",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Route playlist updated" }, "409": { description: "Stale version" } },
+        },
+      },
+      "/announcements/audios": {
+        get: {
+          tags: ["Announcement Audio"],
+          summary: "List audio assets",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Paginated audio list" } },
+        },
+      },
+      "/announcements/audios/upload": {
+        post: {
+          tags: ["Announcement Audio"],
+          summary: "Issue a Vercel Blob client-upload token and process completion callbacks",
+          responses: { "200": { description: "Blob upload response" } },
+        },
+      },
+      "/announcements/audios/{audioId}": {
+        get: {
+          tags: ["Announcement Audio"],
+          summary: "Get audio asset details",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Audio detail" } },
+        },
+        patch: {
+          tags: ["Announcement Audio"],
+          summary: "Update audio metadata",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Audio updated" } },
+        },
+        delete: {
+          tags: ["Announcement Audio"],
+          summary: "Archive an unused audio asset",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Audio archived" }, "409": { description: "Audio is in use" } },
+        },
+      },
+      "/mobile/announcements/bootstrap": {
+        get: {
+          tags: ["Mobile Announcements"],
+          summary: "Get active welcome note, common audio and published routes",
+          responses: { "200": { description: "Mobile announcement bootstrap" } },
+        },
+      },
+      "/mobile/announcements/routes/{routeId}/manifest": {
+        get: {
+          tags: ["Mobile Announcements"],
+          summary: "Get a published route's ordered audio manifest",
+          responses: { "200": { description: "Route manifest" } },
         },
       },
     },
