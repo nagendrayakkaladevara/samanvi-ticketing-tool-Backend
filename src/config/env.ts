@@ -31,7 +31,11 @@ const envSchema = z.object({
   SMTP_PASS: z.string().trim().min(1).optional(),
   EMAIL_FROM: z.string().trim().email().optional(),
   APP_PUBLIC_URL: z.string().trim().url().optional(),
-  BLOB_READ_WRITE_TOKEN: z.string().trim().min(1).optional(),
+  R2_ENDPOINT: z.string().trim().url().optional(),
+  R2_ACCESS_KEY_ID: z.string().trim().min(1).optional(),
+  R2_SECRET_ACCESS_KEY: z.string().trim().min(1).optional(),
+  R2_BUCKET_NAME: z.string().trim().min(1).optional(),
+  R2_PUBLIC_BASE_URL: z.string().trim().url().max(800).optional(),
   AUDIO_MAX_SIZE_BYTES: z.coerce
     .number()
     .int()
@@ -71,7 +75,11 @@ export const env = {
   smtpPass: parsedEnv.data.SMTP_PASS,
   emailFrom: parsedEnv.data.EMAIL_FROM,
   appPublicUrl: parsedEnv.data.APP_PUBLIC_URL,
-  blobReadWriteToken: parsedEnv.data.BLOB_READ_WRITE_TOKEN,
+  r2Endpoint: parsedEnv.data.R2_ENDPOINT,
+  r2AccessKeyId: parsedEnv.data.R2_ACCESS_KEY_ID,
+  r2SecretAccessKey: parsedEnv.data.R2_SECRET_ACCESS_KEY,
+  r2BucketName: parsedEnv.data.R2_BUCKET_NAME,
+  r2PublicBaseUrl: parsedEnv.data.R2_PUBLIC_BASE_URL,
   audioMaxSizeBytes: parsedEnv.data.AUDIO_MAX_SIZE_BYTES,
 } as const;
 
