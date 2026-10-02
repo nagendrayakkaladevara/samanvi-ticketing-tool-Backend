@@ -1,7 +1,6 @@
-import { del } from "@vercel/blob";
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { randomUUID } from "node:crypto";
 import { AudioAssetStatus, AudioCategory, Prisma } from "@prisma/client";
-import { Router, type RequestHandler } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { env } from "../config/env";
 import { badRequest, conflict, notFound } from "../core/errors/http-errors";
@@ -11,6 +10,7 @@ import {
   serializeAudioAsset,
 } from "../lib/announcement-audio";
 import { prisma } from "../lib/prisma";
+import { createAudioUploadUrl, inspectAudioUpload, R2_UPLOAD_EXPIRES_SECONDS } from "../lib/r2-storage";
 import { requireAuth, requirePermission } from "../middleware/auth";
 
 const audioPermission = (action: string) => ({
@@ -75,112 +75,68 @@ function audioIdFrom(params: { audioId?: string | string[] }): string {
   return params.audioId;
 }
 
-const authorizeUploadToken: RequestHandler = (req, res, next) => {
-  if ((req.body as { type?: string } | undefined)?.type === "blob.upload-completed") {
-    next();
-    return;
-  }
-
-  requireAuth(req, res, (authError?: unknown) => {
-    if (authError) {
-      next(authError);
-      return;
-    }
-    requirePermission(audioPermission("upload"))(req, res, next);
-  });
-};
-
 const announcementAudiosRouter = Router();
+announcementAudiosRouter.use(requireAuth);
 
 announcementAudiosRouter.post(
   "/audios/upload",
-  authorizeUploadToken,
+  requirePermission(audioPermission("upload")),
   asyncHandler(async (req, res) => {
-    if (!env.blobReadWriteToken) {
-      throw new Error("BLOB_READ_WRITE_TOKEN is required for audio uploads");
+    const parsed = uploadPayloadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw badRequest("Invalid audio upload metadata", { issues: parsed.error.issues });
     }
-
-    const body = req.body as HandleUploadBody;
-    const result = await handleUpload({
-      body,
-      request: req,
-      token: env.blobReadWriteToken,
-      onBeforeGenerateToken: async (pathname, clientPayload) => {
-        if (!req.user) {
-          throw new Error("Authenticated upload user is missing");
-        }
-        if (!pathname.startsWith("announcements/")) {
-          throw badRequest("Audio uploads must use the announcements/ path");
-        }
-
-        let rawPayload: unknown;
-        try {
-          rawPayload = clientPayload ? JSON.parse(clientPayload) : undefined;
-        } catch {
-          throw badRequest("Invalid audio upload metadata");
-        }
-        const parsed = uploadPayloadSchema.safeParse(rawPayload);
-        if (!parsed.success) {
-          throw badRequest("Invalid audio upload metadata", {
-            issues: parsed.error.issues,
-          });
-        }
-
-        const audio = await prisma.audioAsset.create({
-          data: {
-            title: parsed.data.title,
-            description: parsed.data.description,
-            category: parsed.data.category,
-            originalFileName: parsed.data.fileName,
-            mimeType: parsed.data.mimeType,
-            sizeBytes: BigInt(parsed.data.sizeBytes),
-            durationMs: parsed.data.durationMs,
-            createdById: req.user.sub,
-          },
-          select: { id: true },
-        });
-
-        return {
-          allowedContentTypes: [...ANNOUNCEMENT_AUDIO_CONTENT_TYPES],
-          maximumSizeInBytes: env.audioMaxSizeBytes,
-          addRandomSuffix: true,
-          allowOverwrite: false,
-          cacheControlMaxAge: 31_536_000,
-          tokenPayload: JSON.stringify({ audioId: audio.id }),
-        };
+    const storageKey = "announcements/" + randomUUID();
+    const uploadUrl = await createAudioUploadUrl(storageKey, parsed.data.mimeType, parsed.data.sizeBytes);
+    const audio = await prisma.audioAsset.create({
+      data: {
+        title: parsed.data.title, description: parsed.data.description,
+        category: parsed.data.category, originalFileName: parsed.data.fileName,
+        mimeType: parsed.data.mimeType, sizeBytes: BigInt(parsed.data.sizeBytes),
+        durationMs: parsed.data.durationMs, storageKey, createdById: req.user!.sub,
       },
-      onUploadCompleted: async ({ blob, tokenPayload }) => {
-        let payload: { audioId?: string };
-        try {
-          payload = tokenPayload ? JSON.parse(tokenPayload) : {};
-        } catch {
-          await del(blob.url, { token: env.blobReadWriteToken });
-          throw new Error("Invalid audio upload completion payload");
-        }
-        if (!payload.audioId) {
-          await del(blob.url, { token: env.blobReadWriteToken });
-          throw new Error("Audio upload completion is missing the audio id");
-        }
-
-        await prisma.audioAsset.update({
-          where: { id: payload.audioId },
-          data: {
-            storageKey: blob.pathname,
-            blobUrl: blob.url,
-            downloadUrl: blob.downloadUrl,
-            mimeType: blob.contentType,
-            etag: blob.etag,
-            status: AudioAssetStatus.ready,
-          },
-        });
-      },
+      select: { id: true },
     });
-
-    res.status(200).json(result);
+    res.status(200).json({ success: true, data: {
+      audioId: audio.id, uploadUrl, method: "PUT",
+      headers: { "Content-Type": parsed.data.mimeType, "If-None-Match": "*" },
+      expiresInSeconds: R2_UPLOAD_EXPIRES_SECONDS,
+    } });
   }),
 );
 
-announcementAudiosRouter.use(requireAuth);
+announcementAudiosRouter.post(
+  "/audios/:audioId/upload-complete",
+  requirePermission(audioPermission("upload")),
+  asyncHandler(async (req, res) => {
+    const audioId = audioIdFrom(req.params);
+    const audio = await prisma.audioAsset.findUnique({ where: { id: audioId } });
+    if (!audio || audio.createdById !== req.user!.sub) {
+      throw notFound("Audio asset not found");
+    }
+    if (audio.status === AudioAssetStatus.ready) {
+      res.status(200).json({ success: true, data: serializeAudioAsset(audio) });
+      return;
+    }
+    if (audio.status !== AudioAssetStatus.uploading || !audio.storageKey?.startsWith("announcements/")) {
+      throw conflict("Audio asset is not awaiting an upload");
+    }
+    const { object, url } = await inspectAudioUpload(audio.storageKey);
+    if (object.ContentLength === undefined || BigInt(object.ContentLength) !== audio.sizeBytes ||
+        object.ContentLength > env.audioMaxSizeBytes || object.ContentType !== audio.mimeType) {
+      throw badRequest("Uploaded audio size or content type does not match its metadata");
+    }
+    const updated = await prisma.audioAsset.updateMany({
+      where: { id: audio.id, status: AudioAssetStatus.uploading },
+      data: { blobUrl: url, downloadUrl: url, etag: object.ETag, status: AudioAssetStatus.ready },
+    });
+    if (updated.count === 0) {
+      throw conflict("Audio asset status changed while completing the upload");
+    }
+    const ready = await prisma.audioAsset.findUniqueOrThrow({ where: { id: audio.id }, select: audioSelect });
+    res.status(200).json({ success: true, data: serializeAudioAsset(ready) });
+  }),
+);
 
 announcementAudiosRouter.get(
   "/audios",

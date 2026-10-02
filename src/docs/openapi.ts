@@ -1542,8 +1542,17 @@ export function buildOpenApiSpec() {
       "/announcements/audios/upload": {
         post: {
           tags: ["Announcement Audio"],
-          summary: "Issue a Vercel Blob client-upload token and process completion callbacks",
-          responses: { "200": { description: "Blob upload response" } },
+          summary: "Issue a Cloudflare R2 presigned audio upload URL",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Audio id, PUT upload URL, required headers and expiry" } },
+        },
+      },
+      "/announcements/audios/{audioId}/upload-complete": {
+        post: {
+          tags: ["Announcement Audio"],
+          summary: "Verify the R2 object and mark the audio ready",
+          security: [{ bearerAuth: [] }],
+          responses: { "200": { description: "Ready audio asset" } },
         },
       },
       "/announcements/audios/{audioId}": {
