@@ -82,6 +82,10 @@ async function main() {
   await prisma.ticketActivityLog.deleteMany({});
   await prisma.ticket.deleteMany({});
   await prisma.bus.deleteMany({});
+  await prisma.mobileDriverSession.deleteMany({});
+  await prisma.mobileDriverDevice.deleteMany({});
+  await prisma.mobileDriverAuthAudit.deleteMany({});
+  await prisma.mobileDriverUser.deleteMany({});
   await prisma.user.deleteMany({});
 
   const defaultCategories = [

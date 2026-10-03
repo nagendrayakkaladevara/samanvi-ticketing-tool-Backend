@@ -10,6 +10,7 @@ import { badRequest, notFound } from "../core/errors/http-errors";
 import { asyncHandler } from "../core/http/async-handler";
 import { serializeAudioAsset } from "../lib/announcement-audio";
 import { prisma } from "../lib/prisma";
+import { requireMobileDriverAuth } from "../middleware/mobile-auth";
 
 const mobileRouteQuerySchema = z.object({
   search: z.string().trim().max(150).optional(),
@@ -41,8 +42,7 @@ function routeIdFrom(params: { routeId?: string | string[] }): string {
 
 const mobileAnnouncementsRouter = Router();
 
-// Mobile authentication is intentionally added later when its login design is finalized.
-// These endpoints return only published, non-sensitive announcement content.
+mobileAnnouncementsRouter.use(requireMobileDriverAuth);
 mobileAnnouncementsRouter.get(
   "/bootstrap",
   asyncHandler(async (_req, res) => {

@@ -101,6 +101,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { module: "announcements", submodule: "audios", action: "edit", label: "Edit", sortOrder: 870 },
   { module: "announcements", submodule: "audios", action: "delete", label: "Archive", sortOrder: 880 },
   { module: "announcements", submodule: "settings", action: "edit", label: "Edit", sortOrder: 890 },
+  // Announcements — mobile driver users
+  { module: "announcements", submodule: "mobile_users", action: "view", label: "View", sortOrder: 900 },
+  { module: "announcements", submodule: "mobile_users", action: "create", label: "Create New", sortOrder: 910 },
+  { module: "announcements", submodule: "mobile_users", action: "edit", label: "Edit", sortOrder: 920 },
+  { module: "announcements", submodule: "mobile_users", action: "change_status", label: "Activate / Deactivate", sortOrder: 930 },
+  { module: "announcements", submodule: "mobile_users", action: "reset_device", label: "Reset Device", sortOrder: 940 },
+  { module: "announcements", submodule: "mobile_users", action: "delete", label: "Delete", sortOrder: 950 },
 ];
 
 export const MODULE_LABELS: Record<string, string> = {
@@ -126,6 +133,7 @@ export const SUBMODULE_LABELS: Record<string, string> = {
   routes: "Routes",
   audios: "Audio Library",
   settings: "Settings",
+  mobile_users: "Mobile Users",
 };
 
 /** Maps legacy feature flags to one or more permission keys for backward compatibility. */
