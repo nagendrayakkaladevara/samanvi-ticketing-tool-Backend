@@ -11,6 +11,17 @@ const MOBILE_AUDIENCE = "samanvi-driver-mobile";
 const DAY_MS = 86_400_000;
 const dummyPasswordHash = hashPassword(randomBytes(32).toString("base64url"));
 
+function requireMobileSecret(value: string | undefined, name: string): string {
+  if (!value || value.length < 32) {
+    throw mobileAuthError(
+      503,
+      "MOBILE_AUTH_NOT_CONFIGURED",
+      `Mobile authentication is unavailable because ${name} is not configured correctly.`,
+    );
+  }
+  return value;
+}
+
 export interface MobileAccessTokenPayload {
   sub: string;
   sid: string;
@@ -41,7 +52,10 @@ export function normalizeMobileUsername(username: string): string {
 }
 
 export function hashInstallationId(installationId: string): string {
-  return createHmac("sha256", env.mobileDevicePepper)
+  return createHmac(
+    "sha256",
+    requireMobileSecret(env.mobileDevicePepper, "MOBILE_DEVICE_PEPPER"),
+  )
     .update(installationId)
     .digest("hex");
 }
@@ -69,22 +83,31 @@ function issueMobileAccessToken(input: {
     username: input.username,
     displayName: input.displayName,
   };
-  return jwt.sign(payload, env.mobileJwtSecret, {
-    algorithm: "HS256",
-    issuer: MOBILE_ISSUER,
-    audience: MOBILE_AUDIENCE,
-    expiresIn: env.mobileAccessTokenExpiresIn as jwt.SignOptions["expiresIn"],
-    jwtid: randomBytes(16).toString("hex"),
-  });
+  return jwt.sign(
+    payload,
+    requireMobileSecret(env.mobileJwtSecret, "MOBILE_JWT_SECRET"),
+    {
+      algorithm: "HS256",
+      issuer: MOBILE_ISSUER,
+      audience: MOBILE_AUDIENCE,
+      expiresIn: env.mobileAccessTokenExpiresIn as jwt.SignOptions["expiresIn"],
+      jwtid: randomBytes(16).toString("hex"),
+    },
+  );
 }
 
 export function verifyMobileAccessToken(token: string): MobileAccessTokenPayload {
+  const secret = requireMobileSecret(env.mobileJwtSecret, "MOBILE_JWT_SECRET");
   try {
-    const payload = jwt.verify(token, env.mobileJwtSecret, {
-      algorithms: ["HS256"],
-      issuer: MOBILE_ISSUER,
-      audience: MOBILE_AUDIENCE,
-    }) as MobileAccessTokenPayload;
+    const payload = jwt.verify(
+      token,
+      secret,
+      {
+        algorithms: ["HS256"],
+        issuer: MOBILE_ISSUER,
+        audience: MOBILE_AUDIENCE,
+      },
+    ) as MobileAccessTokenPayload;
     if (payload.tokenType !== "mobile_driver" || !payload.sid || !payload.deviceBindingId) {
       throw new Error("Invalid mobile token claims");
     }

@@ -16,8 +16,10 @@ const envSchema = z.object({
   SWAGGER_ENABLED: z.coerce.boolean().default(true),
   JWT_SECRET: z.string().trim().min(32),
   JWT_EXPIRES_IN: z.string().trim().min(1).default("1d"),
-  MOBILE_JWT_SECRET: z.string().trim().min(32),
-  MOBILE_DEVICE_PEPPER: z.string().trim().min(32),
+  // Validated by the mobile-auth feature when used so a configuration mistake
+  // cannot take down unrelated admin and health endpoints in a serverless worker.
+  MOBILE_JWT_SECRET: z.string().trim().optional(),
+  MOBILE_DEVICE_PEPPER: z.string().trim().optional(),
   MOBILE_ACCESS_TOKEN_EXPIRES_IN: z.string().trim().min(1).default("10m"),
   MOBILE_REFRESH_TOKEN_DAYS: z.coerce.number().int().min(1).max(90).default(30),
   MOBILE_SESSION_ABSOLUTE_DAYS: z.coerce.number().int().min(1).max(365).default(90),
