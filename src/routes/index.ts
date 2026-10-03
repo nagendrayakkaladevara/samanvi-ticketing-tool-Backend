@@ -27,6 +27,11 @@ const apiRouter = Router();
 
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/auth", authRouter);
+// Register mobile routes before the pathless web routers below. Several of those
+// routers install requireAuth with router.use(), so mounting mobile routes after
+// them would make even the public mobile login endpoint require a web JWT.
+apiRouter.use("/mobile/auth", mobileAuthRouter);
+apiRouter.use("/mobile/announcements", mobileAnnouncementsRouter);
 apiRouter.use(profileRouter);
 apiRouter.use(aiRouter);
 apiRouter.use(maybeDocsRouter());
@@ -45,8 +50,6 @@ apiRouter.use(dashboardRouter);
 apiRouter.use(successMetricsRouter);
 apiRouter.use(accessControlRouter);
 apiRouter.use("/announcements", announcementsRouter);
-apiRouter.use("/mobile/auth", mobileAuthRouter);
-apiRouter.use("/mobile/announcements", mobileAnnouncementsRouter);
 
 const rootRouter = Router();
 rootRouter.use(env.apiPrefix, apiRateLimiter, apiRouter);
