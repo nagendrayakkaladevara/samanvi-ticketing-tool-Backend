@@ -21,6 +21,7 @@ import { usersRouter } from "./users.route";
 import { workersRouter } from "./workers.route";
 import { announcementsRouter } from "./announcements.route";
 import { mobileAnnouncementsRouter } from "./mobile-announcements.route";
+import { mobileAuthRouter } from "./mobile-auth.route";
 
 const apiRouter = Router();
 
@@ -44,6 +45,7 @@ apiRouter.use(dashboardRouter);
 apiRouter.use(successMetricsRouter);
 apiRouter.use(accessControlRouter);
 apiRouter.use("/announcements", announcementsRouter);
+apiRouter.use("/mobile/auth", mobileAuthRouter);
 apiRouter.use("/mobile/announcements", mobileAnnouncementsRouter);
 
 const rootRouter = Router();

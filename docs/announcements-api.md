@@ -1,6 +1,6 @@
 # Announcement Management API
 
-Administrative endpoints use the existing ticketing JWT and announcement permission keys. Mobile endpoints currently expose only published announcement content and intentionally remain unauthenticated until the announcement-app login design is finalized.
+Administrative endpoints use the existing ticketing JWT and announcement permission keys. Mobile endpoints use the separate mobile-driver authentication system documented in `mobile-driver-auth.md`.
 
 Base paths:
 
@@ -116,6 +116,8 @@ The array order becomes the playback order. The operation replaces the complete 
 Use `null` to remove the active welcome note.
 
 ## Mobile endpoints
+
+All mobile announcement endpoints require a valid mobile-driver bearer token. Admin application tokens are not accepted.
 
 | Method | Endpoint | Purpose |
 |---|---|---|

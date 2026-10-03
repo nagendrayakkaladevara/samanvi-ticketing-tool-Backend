@@ -151,6 +151,8 @@ model User {
   updatedAnnouncementRoutes AnnouncementRoute[] @relation("AnnouncementRouteUpdatedBy")
   uploadedAudioAssets        AudioAsset[]        @relation("AudioAssetCreatedBy")
   updatedAnnouncementSettings AnnouncementSettings[]
+  createdMobileDriverUsers MobileDriverUser[]      @relation("MobileDriverUserCreatedBy")
+  mobileDriverAuditEvents MobileDriverAuthAudit[]  @relation("MobileDriverAuditAdminActor")
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 }
@@ -360,8 +362,79 @@ model Driver {
   upiScanner           Bytes?
   reportedRepairJobs    RepairJob[]
   linkedApplicationUser User?
+  mobileAppUser         MobileDriverUser?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+}
+
+model MobileDriverUser {
+  id               String                    @id @default(cuid())
+  username         String                    @unique @db.VarChar(50)
+  passwordHash     String                    @db.VarChar(255)
+  displayName      String                    @db.VarChar(100)
+  driverId         String?                   @unique
+  driver           Driver?                   @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  isActive         Boolean                   @default(true)
+  deletedAt        DateTime?
+  createdByAdminId String
+  createdByAdmin   User                      @relation("MobileDriverUserCreatedBy", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  device           MobileDriverDevice?
+  sessions         MobileDriverSession[]
+  auditEvents      MobileDriverAuthAudit[]
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+
+  @@index([isActive, deletedAt])
+  @@index([displayName])
+}
+
+model MobileDriverDevice {
+  id                 String                @id @default(cuid())
+  userId             String                @unique
+  user               MobileDriverUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installationIdHash String                @db.VarChar(64)
+  platform           String?               @db.VarChar(20)
+  deviceName         String?               @db.VarChar(120)
+  osVersion          String?               @db.VarChar(50)
+  appVersion         String?               @db.VarChar(50)
+  registeredAt       DateTime              @default(now())
+  lastSeenAt         DateTime              @default(now())
+  sessions           MobileDriverSession[]
+}
+
+model MobileDriverSession {
+  id                String              @id @default(cuid())
+  userId            String
+  user              MobileDriverUser    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId          String?
+  device            MobileDriverDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  refreshTokenHash  String              @unique @db.VarChar(64)
+  expiresAt         DateTime
+  absoluteExpiresAt DateTime
+  lastUsedAt        DateTime?
+  revokedAt         DateTime?
+  revocationReason  String?             @db.VarChar(80)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model MobileDriverAuthAudit {
+  id           String            @id @default(cuid())
+  userId       String?
+  user         MobileDriverUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  adminActorId String?
+  adminActor   User?             @relation("MobileDriverAuditAdminActor", fields: [adminActorId], references: [id], onDelete: SetNull)
+  eventType    String            @db.VarChar(80)
+  reason       String?           @db.VarChar(500)
+  metadata     Json?
+  requestId    String?           @db.VarChar(100)
+  createdAt    DateTime          @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([adminActorId, createdAt(sort: Desc)])
 }
 
 model Helper {
