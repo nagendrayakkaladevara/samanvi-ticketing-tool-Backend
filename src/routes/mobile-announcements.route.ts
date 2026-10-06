@@ -1,170 +1,94 @@
-import {
-  AnnouncementRouteStatus,
-  AudioAssetStatus,
-  AudioCategory,
-  Prisma,
-} from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { badRequest, notFound } from "../core/errors/http-errors";
 import { asyncHandler } from "../core/http/async-handler";
-import { serializeAudioAsset } from "../lib/announcement-audio";
 import { prisma } from "../lib/prisma";
 import { requireMobileDriverAuth } from "../middleware/mobile-auth";
-
-const mobileRouteQuerySchema = z.object({
-  search: z.string().trim().max(150).optional(),
-});
-
-const publicAudioSelect = {
-  id: true,
-  title: true,
-  description: true,
-  category: true,
-  originalFileName: true,
-  mimeType: true,
-  sizeBytes: true,
-  durationMs: true,
-  checksumSha256: true,
-  status: true,
-  blobUrl: true,
-  downloadUrl: true,
-  createdAt: true,
-  updatedAt: true,
-} satisfies Prisma.AudioAssetSelect;
+import {
+  getQuickAnnouncements, listMobileRoutes, listPinnedRoutes, MAX_PINNED_ROUTES,
+  mobileAudioSelect, mobileRouteSelect, playableAudio, routeCard, setRoutePinned,
+} from "../lib/mobile-announcements";
 
 function routeIdFrom(params: { routeId?: string | string[] }): string {
-  if (!params.routeId || Array.isArray(params.routeId)) {
-    throw badRequest("Invalid route id");
-  }
+  if (!params.routeId || Array.isArray(params.routeId)) throw badRequest("Invalid route id");
   return params.routeId;
 }
 
 const mobileAnnouncementsRouter = Router();
-
 mobileAnnouncementsRouter.use(requireMobileDriverAuth);
-mobileAnnouncementsRouter.get(
-  "/bootstrap",
-  asyncHandler(async (_req, res) => {
-    const [settings, commonAudios, routes] = await Promise.all([
-      prisma.announcementSettings.findUnique({
-        where: { id: "default" },
-        select: { activeWelcomeAudio: { select: publicAudioSelect } },
-      }),
-      prisma.audioAsset.findMany({
-        where: { category: AudioCategory.common_audio, status: AudioAssetStatus.ready },
-        select: publicAudioSelect,
-        orderBy: { title: "asc" },
-      }),
-      prisma.announcementRoute.findMany({
-        where: { status: AnnouncementRouteStatus.published },
-        orderBy: { name: "asc" },
-        select: {
-          id: true,
-          routeCode: true,
-          name: true,
-          origin: true,
-          destination: true,
-          version: true,
-          updatedAt: true,
-          _count: { select: { audios: true } },
-        },
-      }),
-    ]);
+mobileAnnouncementsRouter.use((_req, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
 
-    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-    res.status(200).json({
-      success: true,
-      data: {
-        welcomeAudio: settings?.activeWelcomeAudio
-          ? serializeAudioAsset(settings.activeWelcomeAudio)
-          : null,
-        commonAudios: commonAudios.map(serializeAudioAsset),
-        routes,
-      },
-    });
-  }),
-);
+mobileAnnouncementsRouter.get("/bootstrap", asyncHandler(async (req, res) => {
+  const [routes, quickAnnouncements, settings] = await Promise.all([
+    listMobileRoutes(req.mobileDriver!.sub), getQuickAnnouncements(),
+    prisma.announcementSettings.findUnique({ where: { id: "default" }, select: { recordsDriveUrl: true } }),
+  ]);
+  res.json({ success: true, data: { routes, quickAnnouncements, recordsDriveUrl: settings?.recordsDriveUrl ?? null, maxPinnedRoutes: MAX_PINNED_ROUTES } });
+}));
 
-mobileAnnouncementsRouter.get(
-  "/routes",
-  asyncHandler(async (req, res) => {
-    const parsed = mobileRouteQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      throw badRequest("Invalid route query", { issues: parsed.error.issues });
-    }
-    const routes = await prisma.announcementRoute.findMany({
-      where: {
-        status: AnnouncementRouteStatus.published,
-        ...(parsed.data.search
-          ? {
-              OR: [
-                { routeCode: { contains: parsed.data.search, mode: "insensitive" } },
-                { name: { contains: parsed.data.search, mode: "insensitive" } },
-                { origin: { contains: parsed.data.search, mode: "insensitive" } },
-                { destination: { contains: parsed.data.search, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-      },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        routeCode: true,
-        name: true,
-        origin: true,
-        destination: true,
-        description: true,
-        version: true,
-        updatedAt: true,
-        _count: { select: { audios: true } },
-      },
-    });
-    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-    res.status(200).json({ success: true, data: { items: routes } });
-  }),
-);
+mobileAnnouncementsRouter.get("/routes", asyncHandler(async (req, res) => {
+  const parsed = z.object({ search: z.string().trim().max(150).optional() }).safeParse(req.query);
+  if (!parsed.success) throw badRequest("Invalid route query", { issues: parsed.error.issues });
+  res.json({ success: true, data: { routes: await listMobileRoutes(req.mobileDriver!.sub, parsed.data.search) } });
+}));
 
-mobileAnnouncementsRouter.get(
-  "/routes/:routeId/manifest",
-  asyncHandler(async (req, res) => {
-    const routeId = routeIdFrom(req.params);
-    const route = await prisma.announcementRoute.findFirst({
-      where: { id: routeId, status: AnnouncementRouteStatus.published },
-      select: {
-        id: true,
-        routeCode: true,
-        name: true,
-        origin: true,
-        destination: true,
-        description: true,
-        version: true,
-        updatedAt: true,
-        audios: {
-          orderBy: { position: "asc" },
-          select: {
-            position: true,
-            stopLabel: true,
-            audio: { select: publicAudioSelect },
-          },
-        },
-      },
-    });
-    if (!route) {
-      throw notFound("Published announcement route not found");
-    }
-    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-    res.status(200).json({
-      success: true,
-      data: {
-        ...route,
-        audios: route.audios.map((assignment) => ({
-          ...assignment,
-          audio: serializeAudioAsset(assignment.audio),
-        })),
-      },
-    });
-  }),
-);
+mobileAnnouncementsRouter.get("/routes/:routeId/announcements", asyncHandler(async (req, res) => {
+  const route = await prisma.announcementRoute.findFirst({
+    where: { id: routeIdFrom(req.params), status: "published" },
+    select: {
+      ...mobileRouteSelect,
+      pinnedBy: { where: { userId: req.mobileDriver!.sub }, select: { userId: true } },
+      audios: { where: { audio: { status: "ready" } }, orderBy: { position: "asc" }, select: { position: true, stopLabel: true, audio: { select: mobileAudioSelect } } },
+    },
+  });
+  if (!route) throw notFound("Published announcement route not found");
+  res.json({ success: true, data: {
+    routeId: route.routeCode, route: routeCard(route, route.pinnedBy.length > 0),
+    announcements: route.audios.flatMap(({ audio, position, stopLabel }) => {
+      const playable = playableAudio(audio);
+      return playable ? [{ ...playable, title: stopLabel || playable.title, sequence: position }] : [];
+    }),
+  } });
+}));
 
-export { mobileAnnouncementsRouter };
+mobileAnnouncementsRouter.get("/quick-announcements", asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: { quickAnnouncements: await getQuickAnnouncements() } });
+}));
+
+mobileAnnouncementsRouter.get("/config", asyncHandler(async (_req, res) => {
+  const settings = await prisma.announcementSettings.findUnique({ where: { id: "default" }, select: { recordsDriveUrl: true } });
+  res.json({ success: true, data: { recordsDriveUrl: settings?.recordsDriveUrl ?? null } });
+}));
+
+// Resolve each play request against the backend, so removed or unpublished audio cannot
+// continue to play from stale screen data and the app always needs a live connection.
+mobileAnnouncementsRouter.get("/audios/:audioId", asyncHandler(async (req, res) => {
+  const audioId = z.string().min(1).parse(req.params.audioId);
+  const audio = await prisma.audioAsset.findFirst({
+    where: { id: audioId, status: "ready", OR: [
+      { category: "welcome_note" },
+      { category: "common_audio", dinnerInSettings: { some: { id: "default" } } },
+      { category: "common_audio", toiletInSettings: { some: { id: "default" } } },
+      { category: "stop_announcement", routeAssignments: { some: { route: { status: "published" } } } },
+    ] },
+    select: mobileAudioSelect,
+  });
+  const playable = playableAudio(audio);
+  if (!playable) throw notFound("This announcement is no longer available");
+  res.json({ success: true, data: playable });
+}));
+
+const mobilePinnedRoutesRouter = Router();
+mobilePinnedRoutesRouter.use(requireMobileDriverAuth);
+mobilePinnedRoutesRouter.use((_req, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
+mobilePinnedRoutesRouter.get("/", asyncHandler(async (req, res) => {
+  res.json({ success: true, data: { routes: await listPinnedRoutes(req.mobileDriver!.sub), maxPinnedRoutes: MAX_PINNED_ROUTES } });
+}));
+for (const method of ["post", "delete"] as const) {
+  mobilePinnedRoutesRouter[method]("/:routeId", asyncHandler(async (req, res) => {
+    await setRoutePinned(req.mobileDriver!.sub, routeIdFrom(req.params), method === "post");
+    res.json({ success: true, data: { routes: await listPinnedRoutes(req.mobileDriver!.sub), maxPinnedRoutes: MAX_PINNED_ROUTES } });
+  }));
+}
+
+export { mobileAnnouncementsRouter, mobilePinnedRoutesRouter };

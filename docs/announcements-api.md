@@ -10,8 +10,8 @@ Base paths:
 ## Audio categories
 
 - `stop_announcement`: may be assigned to routes.
-- `common_audio`: global audio returned by the mobile bootstrap endpoint.
-- `welcome_note`: global audio; one ready welcome note may be selected in settings.
+- `common_audio`: select one ready file each for Dinner Break and Toilet Break in Mobile settings.
+- `welcome_note`: every ready welcome note is available in the mobile selection list.
 
 The API and database both reject route assignments that do not reference a ready `stop_announcement`.
 
@@ -49,7 +49,7 @@ const audio = (await completed.json()).data;
 
 Send the file itself as the PUT body, without FormData or the backend Authorization header. The browser sets Content-Length from the file; it must match sizeBytes. The signed If-None-Match header prevents overwriting an uploaded object. If the URL expires before upload, start a new upload. Failed or abandoned uploads remain uploading and cannot be assigned to routes.
 
-The response fields blobUrl and downloadUrl remain available for compatibility and now contain permanent R2 public URLs. Mobile playback and offline caching use the same API fields. No database migration is required.
+The admin response fields blobUrl and downloadUrl contain permanent R2 public URLs. Mobile endpoints expose the selected URL as `audioUrl` for streaming.
 
 Allowed formats are MP3, MP4/M4A, AAC, WAV and OGG. The default maximum size is 50 MiB and can be configured using `AUDIO_MAX_SIZE_BYTES`.
 
@@ -81,6 +81,8 @@ Allowed formats are MP3, MP4/M4A, AAC, WAV and OGG. The default maximum size is 
   "name": "Rajahmundry to Hyderabad",
   "origin": "Rajahmundry",
   "destination": "Hyderabad",
+  "via": "Vijayawada",
+  "busType": "AC",
   "description": "Night service"
 }
 ```
@@ -103,17 +105,19 @@ Routes begin in `draft`. A route cannot be published until it contains at least 
 
 The array order becomes the playback order. The operation replaces the complete route playlist in one serializable transaction. If `expectedVersion` is stale, the API returns `409 Conflict`.
 
-### Select the active welcome note
+### Configure quick announcements and records
 
 `PUT /announcements/settings`
 
 ```json
 {
-  "activeWelcomeAudioId": "welcome-audio-id"
+  "dinnerBreakAudioId": "common-dinner-audio-id",
+  "toiletBreakAudioId": "common-toilet-audio-id",
+  "recordsDriveUrl": "https://drive.google.com/drive/folders/your-folder-id"
 }
 ```
 
-Use `null` to remove the active welcome note.
+All fields support partial updates; use `null` to clear a setting. Break audios must be ready common audios. The Records URL must be an HTTPS `drive.google.com` URL. Welcome Note lists all ready welcome-note audios; no single active welcome selection is used.
 
 ## Mobile endpoints
 
@@ -121,11 +125,28 @@ All mobile announcement endpoints require a valid mobile-driver bearer token. Ad
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/mobile/announcements/bootstrap` | Active welcome note, common audio and published routes |
+| `GET` | `/mobile/announcements/bootstrap` | `routes`, `quickAnnouncements`, `recordsDriveUrl`, `maxPinnedRoutes: 3` |
 | `GET` | `/mobile/announcements/routes` | Search published routes |
-| `GET` | `/mobile/announcements/routes/:routeId/manifest` | Ordered audio manifest for one route |
+| `GET` | `/mobile/announcements/routes/:routeId/announcements` | Route card plus `announcements` in ascending `sequence` order |
+| `GET` | `/mobile/announcements/quick-announcements` | `MULTIPLE` welcome audios and `SINGLE` Dinner/Toilet audios |
+| `GET` | `/mobile/announcements/config` | Current `recordsDriveUrl` (nullable) |
+| `GET` | `/mobile/announcements/audios/:audioId` | Resolve a currently available audio before streaming |
+| `GET` | `/mobile/users/me/pinned-routes` | Authenticated driver's published pinned route cards |
+| `POST` | `/mobile/users/me/pinned-routes/:routeId` | Pin a published route; idempotent |
+| `DELETE` | `/mobile/users/me/pinned-routes/:routeId` | Unpin a route; idempotent |
 
-The manifest includes route `version`, audio timestamps and optional SHA-256 checksums so the mobile app can maintain an offline cache.
+All responses use `{ "success": true, "data": ... }` and `Cache-Control: private, no-store`. Route cards contain `id` (internal identifier used in URLs), `routeId` (display code), `startLocation`, `endLocation`, `via`, `busType` (`AC` or `Non-AC`), and `isPinned`. Announcement entries contain `id`, `title`, `audioUrl`, `sequence`, and optional media metadata. The stored route assignment position is the sequence; the mobile app does not infer or reorder it.
+
+Quick groups always include `welcome-note`, `dinner-break`, and `toilet-break`. MULTIPLE contains `audios`; SINGLE contains `audioUrl` plus an `audio` object with id/title/media metadata. Unconfigured or unavailable SINGLE audio is `null`, and an empty MULTIPLE has `audios: []`.
+
+Pins belong to the authenticated mobile driver, never a caller-supplied user ID. A fourth pin returns HTTP 409 with `code: PIN_LIMIT_REACHED`. A per-user row lock serializes mutations, and unique slots 1–3 with a database CHECK constraint enforce the limit even under concurrent requests. Unpublished routes are hidden and their slots are reclaimed on the next pin operation.
+
+## Deploying the online-only architecture
+
+1. Run `npm run prisma:generate`, then `npm run prisma:deploy` against the target database before deploying this backend.
+2. Deploy the admin frontend and review route Via/bus type. Existing routes receive an empty Via and `Non-AC` during migration; set the actual bus type in the editor.
+3. Select the Dinner and Toilet common audios and set the Records Google Drive folder under Audio App → Mobile settings.
+4. Deploy the matching mobile build. Its API contract replaces the previous manifest/bootstrap format. The old active-welcome database column is retained for data preservation but is no longer used by this API.
 
 ## Environment variables
 
@@ -157,5 +178,26 @@ Configure bucket CORS with the actual frontend origins, for example:
 ```
 
 Existing Vercel-hosted audio is not automatically copied. Keep its storage available until the objects have been copied to R2 and their database storageKey/blobUrl/downloadUrl fields updated, or replaced through new R2 uploads. DELETE still archives records without deleting stored files. Review and remove abandoned objects periodically to avoid accumulating storage.
+
+### Importing the legacy staging catalog
+
+The dedicated announcement importer reads the legacy route definitions and audio folder without running the destructive general-purpose database seed. It imports the active `ST-A02`, `ST-A04`, `ST-VH02`, and `ST-12` routes, all Welcome Notes, and the Dinner/Washroom clips. Objects use deterministic R2 keys and database rows are upserted, so a failed run can be retried. Existing assignments for those four route codes are replaced; unrelated routes and application data are untouched.
+
+Validate the source first:
+
+```powershell
+$env:ANNOUNCEMENT_AUDIO_SOURCE_DIR='D:\ReactProject\samanvibusroutevoiceappExpo\assets\audio'
+npm run seed:announcements:dry-run
+```
+
+For a staging/dev import, configure `DATABASE_URL` (or `DIRECT_URL`), the five `R2_*` variables, and an existing admin username, then explicitly allow writes:
+
+```powershell
+$env:ANNOUNCEMENT_SEED_ADMIN_USERNAME='admin1'
+$env:ALLOW_ANNOUNCEMENT_SEED='true'
+npm run seed:announcements
+```
+
+Production execution is blocked unless `ALLOW_PRODUCTION_ANNOUNCEMENT_SEED=true` is additionally supplied. The importer does not create users or set a Records URL unless `ANNOUNCEMENT_RECORDS_DRIVE_URL` is provided when the settings row is first created.
 
 References: [R2 SDK configuration](https://developers.cloudflare.com/r2/examples/aws/aws-sdk-js-v3/), [CORS](https://developers.cloudflare.com/r2/buckets/cors/), [public buckets](https://developers.cloudflare.com/r2/buckets/public-buckets/), [pricing](https://developers.cloudflare.com/r2/pricing/).

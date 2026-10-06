@@ -163,6 +163,8 @@ model AnnouncementRoute {
   name        String                  @db.VarChar(150)
   origin      String                  @db.VarChar(120)
   destination String                  @db.VarChar(120)
+  via         String                  @default("") @db.VarChar(120)
+  busType     String                  @default("Non-AC") @db.VarChar(6)
   description String?                 @db.VarChar(500)
   status      AnnouncementRouteStatus @default(draft)
   version     Int                     @default(1)
@@ -171,6 +173,7 @@ model AnnouncementRoute {
   updatedById String
   updatedBy   User                    @relation("AnnouncementRouteUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
   audios      RouteAudioAssignment[]
+  pinnedBy    MobilePinnedRoute[]
   createdAt   DateTime                @default(now())
   updatedAt   DateTime                @updatedAt
 
@@ -197,6 +200,8 @@ model AudioAsset {
   createdBy        User             @relation("AudioAssetCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   routeAssignments RouteAudioAssignment[]
   activeInSettings AnnouncementSettings[]
+  dinnerInSettings AnnouncementSettings[] @relation("DinnerBreakAudio")
+  toiletInSettings AnnouncementSettings[] @relation("ToiletBreakAudio")
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -224,6 +229,11 @@ model AnnouncementSettings {
   id                   String      @id @default("default") @db.VarChar(20)
   activeWelcomeAudioId String?     @unique
   activeWelcomeAudio   AudioAsset? @relation(fields: [activeWelcomeAudioId], references: [id], onDelete: SetNull)
+  dinnerBreakAudioId    String?
+  dinnerBreakAudio      AudioAsset? @relation("DinnerBreakAudio", fields: [dinnerBreakAudioId], references: [id], onDelete: SetNull)
+  toiletBreakAudioId    String?
+  toiletBreakAudio      AudioAsset? @relation("ToiletBreakAudio", fields: [toiletBreakAudioId], references: [id], onDelete: SetNull)
+  recordsDriveUrl       String?     @db.VarChar(1000)
   updatedById          String
   updatedBy            User        @relation(fields: [updatedById], references: [id], onDelete: Restrict)
   createdAt            DateTime    @default(now())
@@ -381,11 +391,25 @@ model MobileDriverUser {
   device           MobileDriverDevice?
   sessions         MobileDriverSession[]
   auditEvents      MobileDriverAuthAudit[]
+  pinnedRoutes     MobilePinnedRoute[]
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt
 
   @@index([isActive, deletedAt])
   @@index([displayName])
+}
+
+model MobilePinnedRoute {
+  userId    String
+  user      MobileDriverUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routeId   String
+  route     AnnouncementRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  slot      Int
+  createdAt DateTime          @default(now())
+
+  @@id([userId, routeId])
+  @@unique([userId, slot])
+  @@index([routeId])
 }
 
 model MobileDriverDevice {
