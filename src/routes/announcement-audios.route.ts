@@ -246,7 +246,7 @@ announcementAudiosRouter.patch(
       select: {
         id: true,
         category: true,
-        _count: { select: { routeAssignments: true, activeInSettings: true } },
+        _count: { select: { routeAssignments: true, dinnerInSettings: true, toiletInSettings: true } },
       },
     });
     if (!existing) {
@@ -255,7 +255,7 @@ announcementAudiosRouter.patch(
     if (
       parsed.data.category &&
       parsed.data.category !== existing.category &&
-      (existing._count.routeAssignments > 0 || existing._count.activeInSettings > 0)
+      (existing._count.routeAssignments > 0 || existing._count.dinnerInSettings > 0 || existing._count.toiletInSettings > 0)
     ) {
       throw conflict("Audio category cannot be changed while the audio is in use");
     }
@@ -279,13 +279,13 @@ announcementAudiosRouter.delete(
       select: {
         id: true,
         status: true,
-        _count: { select: { routeAssignments: true, activeInSettings: true } },
+        _count: { select: { routeAssignments: true, dinnerInSettings: true, toiletInSettings: true } },
       },
     });
     if (!audio) {
       throw notFound("Audio asset not found");
     }
-    if (audio._count.routeAssignments > 0 || audio._count.activeInSettings > 0) {
+    if (audio._count.routeAssignments > 0 || audio._count.dinnerInSettings > 0 || audio._count.toiletInSettings > 0) {
       throw conflict("Audio is in use and cannot be archived");
     }
     await prisma.audioAsset.update({

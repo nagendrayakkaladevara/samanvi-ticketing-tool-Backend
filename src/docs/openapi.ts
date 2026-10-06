@@ -29,6 +29,12 @@ export function buildOpenApiSpec() {
     servers: [{ url: env.apiPrefix }],
     components: {
       securitySchemes: {
+        mobileBearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description: "Separate mobile-driver access token from /mobile/auth/login",
+        },
         bearerAuth: {
           type: "http",
           scheme: "bearer",
@@ -1578,16 +1584,49 @@ export function buildOpenApiSpec() {
       "/mobile/announcements/bootstrap": {
         get: {
           tags: ["Mobile Announcements"],
-          summary: "Get active welcome note, common audio and published routes",
+          summary: "Get online route cards, per-driver pins, quick announcements and Records configuration",
+          security: [{ mobileBearerAuth: [] }],
           responses: { "200": { description: "Mobile announcement bootstrap" } },
         },
       },
-      "/mobile/announcements/routes/{routeId}/manifest": {
+      "/mobile/announcements/routes": {
         get: {
           tags: ["Mobile Announcements"],
-          summary: "Get a published route's ordered audio manifest",
-          responses: { "200": { description: "Route manifest" } },
+          summary: "List published route cards including Via, bus type and isPinned",
+          security: [{ mobileBearerAuth: [] }],
+          responses: { "200": { description: "Route cards" } },
         },
+      },
+      "/mobile/announcements/routes/{routeId}/announcements": {
+        parameters: [{ name: "routeId", in: "path", required: true, schema: { type: "string" }, description: "Internal route id from the route card" }],
+        get: {
+          tags: ["Mobile Announcements"],
+          summary: "Get ready route announcements in ascending sequence order",
+          security: [{ mobileBearerAuth: [] }],
+          responses: { "200": { description: "Route and ordered announcements" }, "404": { description: "Route not published or not found" } },
+        },
+      },
+      "/mobile/announcements/quick-announcements": {
+        get: { tags: ["Mobile Announcements"], summary: "Welcome Note (MULTIPLE), Dinner Break and Toilet Break (SINGLE)", security: [{ mobileBearerAuth: [] }], responses: { "200": { description: "Quick announcements" } } },
+      },
+      "/mobile/announcements/config": {
+        get: { tags: ["Mobile Announcements"], summary: "Get the configured recordsDriveUrl", security: [{ mobileBearerAuth: [] }], responses: { "200": { description: "Mobile configuration" } } },
+      },
+      "/mobile/announcements/audios/{audioId}": {
+        parameters: [{ name: "audioId", in: "path", required: true, schema: { type: "string" } }],
+        get: { tags: ["Mobile Announcements"], summary: "Resolve a currently available streaming audio", security: [{ mobileBearerAuth: [] }], responses: { "200": { description: "Audio with HTTPS audioUrl" }, "404": { description: "Unavailable audio" } } },
+      },
+      "/mobile/users/me/pinned-routes": {
+        get: { tags: ["Mobile Announcements"], summary: "List the authenticated driver's pinned routes", security: [{ mobileBearerAuth: [] }], responses: { "200": { description: "Pinned routes and maxPinnedRoutes: 3" } } },
+      },
+      "/mobile/users/me/pinned-routes/{routeId}": {
+        parameters: [{ name: "routeId", in: "path", required: true, schema: { type: "string" } }],
+        post: { tags: ["Mobile Announcements"], summary: "Pin a published route (idempotent, maximum 3 per driver)", security: [{ mobileBearerAuth: [] }], responses: { "200": { description: "Pinned routes" }, "409": { description: "PIN_LIMIT_REACHED: unpin a route first" }, "404": { description: "Route not published" } } },
+        delete: { tags: ["Mobile Announcements"], summary: "Unpin a route (idempotent)", security: [{ mobileBearerAuth: [] }], responses: { "200": { description: "Pinned routes" } } },
+      },
+      "/announcements/settings": {
+        get: { tags: ["Announcement Audio"], summary: "Get Dinner/Toilet audio selection and Records Drive URL", security: [{ bearerAuth: [] }], responses: { "200": { description: "Announcement settings" } } },
+        put: { tags: ["Announcement Audio"], summary: "Configure dinnerBreakAudioId, toiletBreakAudioId and recordsDriveUrl", security: [{ bearerAuth: [] }], responses: { "200": { description: "Settings saved" }, "400": { description: "Invalid audio category, readiness or Google Drive URL" } } },
       },
     },
   } as const;

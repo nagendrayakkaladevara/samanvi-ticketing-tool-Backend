@@ -17,6 +17,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
+    "seed:announcements": "tsx prisma/seed-announcements.ts",
+    "seed:announcements:dry-run": "tsx prisma/seed-announcements.ts --dry-run",
     "db:populate": "tsx prisma/populate-demo-data.ts"
   },
   "dependencies": {

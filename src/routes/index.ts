@@ -20,7 +20,7 @@ import { userHistoryRouter } from "./user-history.route";
 import { usersRouter } from "./users.route";
 import { workersRouter } from "./workers.route";
 import { announcementsRouter } from "./announcements.route";
-import { mobileAnnouncementsRouter } from "./mobile-announcements.route";
+import { mobileAnnouncementsRouter, mobilePinnedRoutesRouter } from "./mobile-announcements.route";
 import { mobileAuthRouter } from "./mobile-auth.route";
 
 const apiRouter = Router();
@@ -32,6 +32,7 @@ apiRouter.use("/auth", authRouter);
 // them would make even the public mobile login endpoint require a web JWT.
 apiRouter.use("/mobile/auth", mobileAuthRouter);
 apiRouter.use("/mobile/announcements", mobileAnnouncementsRouter);
+apiRouter.use("/mobile/users/me/pinned-routes", mobilePinnedRoutesRouter);
 apiRouter.use(profileRouter);
 apiRouter.use(aiRouter);
 apiRouter.use(maybeDocsRouter());
