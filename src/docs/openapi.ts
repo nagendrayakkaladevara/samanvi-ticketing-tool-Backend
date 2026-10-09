@@ -1597,6 +1597,17 @@ export function buildOpenApiSpec() {
           responses: { "200": { description: "Restored audio asset" }, "403": { description: "Delete / Restore permission required" }, "404": { description: "Audio not found" }, "409": { description: "Audio is not deleted, has no recoverable status, or changed concurrently" } },
         },
       },
+      "/announcements/audios/{audioId}/break-mapping": {
+        put: {
+          tags: ["Announcement Audio"],
+          summary: "Map verified Common audio to Dinner Break or Toilet Break",
+          description: "Requires announcements:settings:edit. Replaces the selected button's audio, removes this file's other mapping unless both is selected, and preserves other files' mappings and the Records URL.",
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: "audioId", in: "path", required: true, schema: { type: "string" } }],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["target"], additionalProperties: false, properties: { target: { type: "string", enum: ["dinner_break", "toilet_break", "both", "none"] } } } } } },
+          responses: { "200": { description: "Updated announcement settings" }, "400": { description: "Invalid mapping or non-Common audio" }, "403": { description: "Mobile settings permission required" }, "404": { description: "Audio not found" }, "409": { description: "Audio is not playable or mapping changed concurrently; retry" } },
+        },
+      },
       "/mobile/announcements/bootstrap": {
         get: {
           tags: ["Mobile Announcements"],
