@@ -65,6 +65,7 @@ Allowed formats are MP3, MP4/M4A, AAC, WAV and OGG. The default maximum size is 
 | `PATCH` | `/announcements/audios/:audioId` | `announcements:audios:edit` |
 | `DELETE` | `/announcements/audios/:audioId` | `announcements:audios:delete` |
 | `POST` | `/announcements/audios/:audioId/restore` | `announcements:audios:delete` |
+| `PUT` | `/announcements/audios/:audioId/break-mapping` | `announcements:settings:edit` |
 | `GET` | `/announcements/routes` | `announcements:routes:view` |
 | `POST` | `/announcements/routes` | `announcements:routes:create` |
 | `GET` | `/announcements/routes/:routeId` | `announcements:routes:view` |
@@ -73,6 +74,16 @@ Allowed formats are MP3, MP4/M4A, AAC, WAV and OGG. The default maximum size is 
 | `DELETE` | `/announcements/routes/:routeId` | `announcements:routes:delete` |
 | `GET` | `/announcements/settings` | `announcements:settings:edit` |
 | `PUT` | `/announcements/settings` | `announcements:settings:edit` |
+
+### Map audio to Dinner Break / Toilet Break
+
+`PUT /announcements/audios/:audioId/break-mapping` accepts `{ "target": "dinner_break" }`, `toilet_break`, `both`, or `none`. Only existing Common audio is eligible. Assigning requires a verified, ready asset with an HTTPS playback URL; `none` can clear a stale assignment. The response is the same settings object returned by `/settings`.
+
+The frontend's Dinner Break and Toilet Break upload options still submit `category: common_audio`, then call this endpoint **after** upload verification. A mapping failure does not remove the ready file; it can be retried without re-uploading. Existing Common audio can be mapped directly without another upload.
+
+Mapping replaces the chosen button's audio, not the stored file. Moving the same audio to a different button removes its previous assignment; mappings of other files and the Records URL are preserved. `both` explicitly assigns the same file to both buttons. `none` removes only this file's assignments. Changes are transactional with an audio row lock and serializable isolation; concurrent changes may return `409` for retry. The existing Mobile settings permission is required (upload permission alone is not enough).
+
+This uses the existing `AnnouncementSettings` fields and mobile quick-announcement response. No new database migration is required. Old mobile clients receive the mapped audio on their next catalog refresh; updated clients also check the latest mapping before every quick-announcement tap.
 
 ### Delete and restore audio
 
