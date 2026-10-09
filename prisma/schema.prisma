@@ -196,6 +196,7 @@ model AudioAsset {
   checksumSha256   String?          @db.VarChar(64)
   etag             String?          @db.VarChar(255)
   status           AudioAssetStatus @default(uploading)
+  archivedFromStatus AudioAssetStatus?
   createdById      String
   createdBy        User             @relation("AudioAssetCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   routeAssignments RouteAudioAssignment[]

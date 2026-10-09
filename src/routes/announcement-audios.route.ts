@@ -149,12 +149,13 @@ announcementAudiosRouter.get(
     const { page, pageSize, search, category, status } = parsed.data;
     const where: Prisma.AudioAssetWhereInput = {
       ...(category ? { category } : {}),
-      ...(status ? { status } : {}),
+      status: status ?? { not: AudioAssetStatus.archived },
       ...(search
         ? {
             OR: [
               { title: { contains: search, mode: "insensitive" } },
               { originalFileName: { contains: search, mode: "insensitive" } },
+              { description: { contains: search, mode: "insensitive" } },
             ],
           }
         : {}),
@@ -164,7 +165,7 @@ announcementAudiosRouter.get(
       prisma.audioAsset.findMany({
         where,
         select: audioSelect,
-        orderBy: { createdAt: "desc" },
+        orderBy: status === AudioAssetStatus.archived ? { updatedAt: "desc" } : { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -246,11 +247,15 @@ announcementAudiosRouter.patch(
       select: {
         id: true,
         category: true,
+        status: true,
         _count: { select: { routeAssignments: true, dinnerInSettings: true, toiletInSettings: true } },
       },
     });
     if (!existing) {
       throw notFound("Audio asset not found");
+    }
+    if (existing.status === AudioAssetStatus.archived) {
+      throw conflict("Deleted audio must be restored before editing");
     }
     if (
       parsed.data.category &&
@@ -279,20 +284,57 @@ announcementAudiosRouter.delete(
       select: {
         id: true,
         status: true,
-        _count: { select: { routeAssignments: true, dinnerInSettings: true, toiletInSettings: true } },
+        _count: { select: { routeAssignments: true, activeInSettings: true, dinnerInSettings: true, toiletInSettings: true } },
       },
     });
     if (!audio) {
       throw notFound("Audio asset not found");
     }
-    if (audio._count.routeAssignments > 0 || audio._count.dinnerInSettings > 0 || audio._count.toiletInSettings > 0) {
-      throw conflict("Audio is in use and cannot be archived");
+    if (audio._count.routeAssignments > 0 || audio._count.activeInSettings > 0 || audio._count.dinnerInSettings > 0 || audio._count.toiletInSettings > 0) {
+      throw conflict("Audio is in use. Remove it from routes and mobile settings before deleting it");
     }
-    await prisma.audioAsset.update({
-      where: { id: audio.id },
-      data: { status: AudioAssetStatus.archived },
-    });
+    if (audio.status !== AudioAssetStatus.archived) {
+      const updated = await prisma.audioAsset.updateMany({
+        where: {
+          id: audio.id, status: audio.status,
+          routeAssignments: { none: {} }, activeInSettings: { none: {} },
+          dinnerInSettings: { none: {} }, toiletInSettings: { none: {} },
+        },
+        data: { status: AudioAssetStatus.archived, archivedFromStatus: audio.status },
+      });
+      if (updated.count === 0) {
+        throw conflict("Audio changed or is now in use. Refresh and try again");
+      }
+    }
     res.status(200).json({ success: true, data: { id: audio.id } });
+  }),
+);
+
+announcementAudiosRouter.post(
+  "/audios/:audioId/restore",
+  requirePermission(audioPermission("delete")),
+  asyncHandler(async (req, res) => {
+    const audioId = audioIdFrom(req.params);
+    const audio = await prisma.audioAsset.findUnique({ where: { id: audioId } });
+    if (!audio) {
+      throw notFound("Audio asset not found");
+    }
+    if (audio.status !== AudioAssetStatus.archived) {
+      throw conflict("Only deleted audio can be restored");
+    }
+    const status = audio.archivedFromStatus;
+    if (!status || status === AudioAssetStatus.archived) {
+      throw conflict("The previous audio status is unavailable; upload the audio again");
+    }
+    const updated = await prisma.audioAsset.updateMany({
+      where: { id: audio.id, status: AudioAssetStatus.archived },
+      data: { status, archivedFromStatus: null },
+    });
+    if (updated.count === 0) {
+      throw conflict("Audio changed while restoring. Refresh and try again");
+    }
+    const restored = await prisma.audioAsset.findUniqueOrThrow({ where: { id: audio.id }, select: audioSelect });
+    res.status(200).json({ success: true, data: serializeAudioAsset(restored) });
   }),
 );
 

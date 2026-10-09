@@ -4,18 +4,22 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(),
+  findMany: vi.fn(), count: vi.fn(),
   createAudioUploadUrl: vi.fn(), inspectAudioUpload: vi.fn(),
 }));
 vi.mock("../config/env", () => ({ env: { audioMaxSizeBytes: 1024 } }));
-vi.mock("../lib/prisma", () => ({ prisma: { audioAsset: mocks } }));
+vi.mock("../lib/prisma", () => ({ prisma: { audioAsset: mocks, $transaction: (queries: Promise<unknown>[]) => Promise.all(queries) } }));
 vi.mock("../lib/r2-storage", () => ({ ...mocks, R2_UPLOAD_EXPIRES_SECONDS: 300 }));
 vi.mock("../middleware/auth", () => ({
   requireAuth: (req: any, _res: any, next: any) => { req.user = { sub: "user-1" }; next(); },
-  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: ({ action }: { action: string }) => (req: any, res: any, next: any) => {
+    if (req.headers["x-deny-permission"] === action) return res.status(403).json({ message: "Forbidden" });
+    next();
+  },
 }));
 import { announcementAudiosRouter } from "./announcement-audios.route";
 
-describe("R2 announcement upload", () => {
+describe("Announcement audio lifecycle", () => {
   let server: Server;
   let base: string;
   const audio = { id: "audio-1", createdById: "user-1", status: "uploading",
@@ -78,5 +82,94 @@ describe("R2 announcement upload", () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
     expect((await complete()).status).toBe(409);
     expect(mocks.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  const unused = { ...audio, status: "ready", _count: { routeAssignments: 0, activeInSettings: 0, dinnerInSettings: 0, toiletInSettings: 0 } };
+  const remove = () => fetch(`${base}/audios/audio-1`, { method: "DELETE" });
+  const restore = () => fetch(`${base}/audios/audio-1/restore`, { method: "POST" });
+
+  it("excludes deleted audio from the default library", async () => {
+    mocks.findMany.mockResolvedValue([{ ...audio, status: "ready" }]);
+    mocks.count.mockResolvedValue(1);
+    const response = await fetch(`${base}/audios`);
+    expect(response.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { status: { not: "archived" } } }));
+    expect((await response.json()).data.pagination.total).toBe(1);
+  });
+  it("lists recently deleted audio with search, category and pagination", async () => {
+    mocks.findMany.mockResolvedValue([]);
+    mocks.count.mockResolvedValue(101);
+    const response = await fetch(`${base}/audios?status=archived&search=Stop&category=stop_announcement&page=2&pageSize=100`);
+    expect(response.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { status: "archived", category: "stop_announcement", OR: expect.arrayContaining([{ description: { contains: "Stop", mode: "insensitive" } }]) },
+      orderBy: { updatedAt: "desc" }, skip: 100, take: 100,
+    }));
+    expect((await response.json()).data.pagination).toMatchObject({ page: 2, total: 101, totalPages: 2 });
+  });
+  it.each(["ready", "uploading", "failed"])("soft-deletes %s audio and retains its status", async (status) => {
+    mocks.findUnique.mockResolvedValue({ ...unused, status });
+    expect((await remove()).status).toBe(200);
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: { id: audio.id, status, routeAssignments: { none: {} }, activeInSettings: { none: {} }, dinnerInSettings: { none: {} }, toiletInSettings: { none: {} } },
+      data: { status: "archived", archivedFromStatus: status },
+    });
+  });
+  it.each(["routeAssignments", "activeInSettings", "dinnerInSettings", "toiletInSettings"])("protects audio used by %s", async (relation) => {
+    mocks.findUnique.mockResolvedValue({ ...unused, _count: { ...unused._count, [relation]: 1 } });
+    expect((await remove()).status).toBe(409);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+  it("does not overwrite the retained status on repeated delete", async () => {
+    mocks.findUnique.mockResolvedValue({ ...unused, status: "archived", archivedFromStatus: "ready" });
+    expect((await remove()).status).toBe(200);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+  it("rejects delete when audio changed or acquired references", async () => {
+    mocks.findUnique.mockResolvedValue(unused);
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    expect((await remove()).status).toBe(409);
+  });
+  it.each(["ready", "uploading", "failed"])("restores deleted audio to its previous %s status", async (status) => {
+    mocks.findUnique.mockResolvedValue({ ...audio, status: "archived", archivedFromStatus: status });
+    mocks.findUniqueOrThrow.mockResolvedValue({ ...audio, status });
+    const response = await restore();
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.status).toBe(status);
+    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { id: audio.id, status: "archived" }, data: { status, archivedFromStatus: null } });
+    expect(mocks.inspectAudioUpload).not.toHaveBeenCalled();
+  });
+  it.each([null, "archived"])("rejects restore with an invalid previous status %s", async (archivedFromStatus) => {
+    mocks.findUnique.mockResolvedValue({ ...audio, status: "archived", archivedFromStatus });
+    expect((await restore()).status).toBe(409);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+  it("rejects restore of active audio", async () => {
+    expect((await restore()).status).toBe(409);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+  it("rejects concurrent restores without overwriting another change", async () => {
+    mocks.findUnique.mockResolvedValue({ ...audio, status: "archived", archivedFromStatus: "ready" });
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    expect((await restore()).status).toBe(409);
+    expect(mocks.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+  it("requires delete permission for both delete and restore", async () => {
+    for (const [path, method] of [["", "DELETE"], ["/restore", "POST"]]) {
+      const response = await fetch(`${base}/audios/audio-1${path}`, { method, headers: { "x-deny-permission": "delete" } });
+      expect(response.status).toBe(403);
+    }
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+  it("returns not found for missing delete and restore targets", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+    expect((await remove()).status).toBe(404);
+    expect((await restore()).status).toBe(404);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+  it("prevents editing deleted audio", async () => {
+    mocks.findUnique.mockResolvedValue({ ...unused, status: "archived" });
+    const response = await fetch(`${base}/audios/audio-1`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Updated" }) });
+    expect(response.status).toBe(409);
   });
 });
