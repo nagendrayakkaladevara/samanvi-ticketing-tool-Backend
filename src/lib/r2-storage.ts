@@ -1,4 +1,4 @@
-import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config/env";
 import { badRequest } from "../core/errors/http-errors";
@@ -48,6 +48,15 @@ export async function inspectAudioUpload(key: string) {
       throw badRequest("Audio file has not been uploaded to R2");
     }
     throw error;
+  } finally {
+    client.destroy();
+  }
+}
+
+export async function deleteAudioObject(key: string) {
+  const { client, bucket } = storage();
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
   } finally {
     client.destroy();
   }
