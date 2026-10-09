@@ -64,6 +64,7 @@ Allowed formats are MP3, MP4/M4A, AAC, WAV and OGG. The default maximum size is 
 | `POST` | `/announcements/audios/:audioId/upload-complete` | `announcements:audios:upload` |
 | `PATCH` | `/announcements/audios/:audioId` | `announcements:audios:edit` |
 | `DELETE` | `/announcements/audios/:audioId` | `announcements:audios:delete` |
+| `POST` | `/announcements/audios/:audioId/restore` | `announcements:audios:delete` |
 | `GET` | `/announcements/routes` | `announcements:routes:view` |
 | `POST` | `/announcements/routes` | `announcements:routes:create` |
 | `GET` | `/announcements/routes/:routeId` | `announcements:routes:view` |
@@ -72,6 +73,15 @@ Allowed formats are MP3, MP4/M4A, AAC, WAV and OGG. The default maximum size is 
 | `DELETE` | `/announcements/routes/:routeId` | `announcements:routes:delete` |
 | `GET` | `/announcements/settings` | `announcements:settings:edit` |
 | `PUT` | `/announcements/settings` | `announcements:settings:edit` |
+
+### Delete and restore audio
+
+- `DELETE /announcements/audios/:audioId` moves unused audio to **Recently deleted**. The database still uses `status: archived`; the record and stored file are retained. Repeating DELETE does not overwrite the previous status or deletion time.
+- Audio referenced by routes or mobile settings cannot be deleted (`409`). Remove those references first.
+- `GET /announcements/audios` excludes deleted audio by default. Use `?status=archived` for Recently deleted, ordered by deletion time (newest first). Search, category and pagination work in both lists.
+- `POST /announcements/audios/:audioId/restore` restores the status held before deletion and returns the audio asset. Ready audio becomes usable again; uploading/failed audio does **not** become ready without verification. This uses the existing `announcements:audios:delete` permission; no new grants are required.
+- Deleted audio cannot be edited or completed through the upload-complete endpoint. Restore it first. There is no automatic expiry or permanent-delete action.
+- Apply migration `20261009120000_audio_delete_restore` before deploying the backend (`npm run prisma:deploy`). It adds `archivedFromStatus` and backfills previously archived audio: completed URL-bearing assets become ready on restore, unfinished R2 uploads remain uploading, and other incomplete assets remain failed.
 
 ### Create a route
 
@@ -177,7 +187,7 @@ Configure bucket CORS with the actual frontend origins, for example:
 ]
 ```
 
-Existing Vercel-hosted audio is not automatically copied. Keep its storage available until the objects have been copied to R2 and their database storageKey/blobUrl/downloadUrl fields updated, or replaced through new R2 uploads. DELETE still archives records without deleting stored files. Review and remove abandoned objects periodically to avoid accumulating storage.
+Existing Vercel-hosted audio is not automatically copied. Keep its storage available until the objects have been copied to R2 and their database storageKey/blobUrl/downloadUrl fields updated, or replaced through new R2 uploads. DELETE moves records to Recently deleted without deleting stored files. Keep those files available for restoration; any separate storage cleanup must avoid recoverable audio.
 
 ### Importing the legacy staging catalog
 

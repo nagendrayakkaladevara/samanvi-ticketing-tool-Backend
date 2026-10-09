@@ -1540,8 +1540,15 @@ export function buildOpenApiSpec() {
       "/announcements/audios": {
         get: {
           tags: ["Announcement Audio"],
-          summary: "List audio assets",
+          summary: "List active audio assets (use status=archived for Recently deleted)",
           security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "status", in: "query", schema: { type: "string", enum: ["uploading", "ready", "failed", "archived"] }, description: "Deleted audio is excluded unless status=archived is supplied" },
+            { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+            { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+            { name: "search", in: "query", schema: { type: "string" }, description: "Search title, file name or description" },
+            { name: "category", in: "query", schema: { type: "string", enum: ["stop_announcement", "common_audio", "welcome_note"] } },
+          ],
           responses: { "200": { description: "Paginated audio list" } },
         },
       },
@@ -1576,9 +1583,18 @@ export function buildOpenApiSpec() {
         },
         delete: {
           tags: ["Announcement Audio"],
-          summary: "Archive an unused audio asset",
+          summary: "Move unused audio to Recently deleted without removing its file",
           security: [{ bearerAuth: [] }],
-          responses: { "200": { description: "Audio archived" }, "409": { description: "Audio is in use" } },
+          responses: { "200": { description: "Audio deleted (recoverable)" }, "409": { description: "Audio is in use or changed concurrently" } },
+        },
+      },
+      "/announcements/audios/{audioId}/restore": {
+        post: {
+          tags: ["Announcement Audio"],
+          summary: "Restore deleted audio to its previous status (requires audios:delete permission)",
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: "audioId", in: "path", required: true, schema: { type: "string" } }],
+          responses: { "200": { description: "Restored audio asset" }, "403": { description: "Delete / Restore permission required" }, "404": { description: "Audio not found" }, "409": { description: "Audio is not deleted, has no recoverable status, or changed concurrently" } },
         },
       },
       "/mobile/announcements/bootstrap": {

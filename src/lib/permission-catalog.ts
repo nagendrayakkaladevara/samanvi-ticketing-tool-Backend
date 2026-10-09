@@ -99,7 +99,7 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { module: "announcements", submodule: "audios", action: "view", label: "View", sortOrder: 850 },
   { module: "announcements", submodule: "audios", action: "upload", label: "Upload", sortOrder: 860 },
   { module: "announcements", submodule: "audios", action: "edit", label: "Edit", sortOrder: 870 },
-  { module: "announcements", submodule: "audios", action: "delete", label: "Archive", sortOrder: 880 },
+  { module: "announcements", submodule: "audios", action: "delete", label: "Delete / Restore", sortOrder: 880 },
   { module: "announcements", submodule: "settings", action: "edit", label: "Edit", sortOrder: 890 },
   // Announcements — mobile driver users
   { module: "announcements", submodule: "mobile_users", action: "view", label: "View", sortOrder: 900 },
