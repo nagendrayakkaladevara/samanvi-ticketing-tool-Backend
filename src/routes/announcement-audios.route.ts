@@ -10,7 +10,7 @@ import {
   serializeAudioAsset,
 } from "../lib/announcement-audio";
 import { prisma } from "../lib/prisma";
-import { createAudioUploadUrl, inspectAudioUpload, R2_UPLOAD_EXPIRES_SECONDS } from "../lib/r2-storage";
+import { createAudioUploadUrl, deleteAudioObject, inspectAudioUpload, R2_UPLOAD_EXPIRES_SECONDS } from "../lib/r2-storage";
 import { requireAuth, requirePermission } from "../middleware/auth";
 
 const audioPermission = (action: string) => ({
@@ -335,6 +335,40 @@ announcementAudiosRouter.post(
     }
     const restored = await prisma.audioAsset.findUniqueOrThrow({ where: { id: audio.id }, select: audioSelect });
     res.status(200).json({ success: true, data: serializeAudioAsset(restored) });
+  }),
+);
+
+announcementAudiosRouter.delete(
+  "/audios/:audioId/permanent",
+  requirePermission(audioPermission("delete")),
+  asyncHandler(async (req, res) => {
+    const audioId = audioIdFrom(req.params);
+    await prisma.$transaction(async (tx) => {
+      // Lock the archived row before storage removal so restore cannot race it.
+      const locked = await tx.audioAsset.updateMany({
+        where: { id: audioId, status: AudioAssetStatus.archived },
+        data: { status: AudioAssetStatus.archived },
+      });
+      if (!locked.count) {
+        const existing = await tx.audioAsset.findUnique({ where: { id: audioId }, select: { id: true } });
+        if (!existing) throw notFound("Audio asset not found");
+        throw conflict("Only recently deleted audio can be permanently deleted");
+      }
+      const audio = await tx.audioAsset.findUniqueOrThrow({
+        where: { id: audioId },
+        include: { _count: { select: { routeAssignments: true, activeInSettings: true, dinnerInSettings: true, toiletInSettings: true } } },
+      });
+      if (Object.values(audio._count).some((count) => count > 0)) {
+        throw conflict("Audio is in use. Remove it from routes and mobile settings before deleting it");
+      }
+      if (audio.archivedFromStatus === AudioAssetStatus.uploading &&
+          Date.now() < audio.createdAt.getTime() + R2_UPLOAD_EXPIRES_SECONDS * 1000) {
+        throw conflict("The upload link is still active. Wait five minutes after upload creation and try again");
+      }
+      if (audio.storageKey) await deleteAudioObject(audio.storageKey);
+      await tx.audioAsset.delete({ where: { id: audioId } });
+    }, { timeout: 20000 });
+    res.status(200).json({ success: true, data: { id: audioId } });
   }),
 );
 

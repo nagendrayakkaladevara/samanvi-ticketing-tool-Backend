@@ -65,6 +65,7 @@ Allowed formats are MP3, MP4/M4A, AAC, WAV and OGG. The default maximum size is 
 | `PATCH` | `/announcements/audios/:audioId` | `announcements:audios:edit` |
 | `DELETE` | `/announcements/audios/:audioId` | `announcements:audios:delete` |
 | `POST` | `/announcements/audios/:audioId/restore` | `announcements:audios:delete` |
+| `DELETE` | `/announcements/audios/:audioId/permanent` | `announcements:audios:delete` |
 | `PUT` | `/announcements/audios/:audioId/break-mapping` | `announcements:settings:edit` |
 | `GET` | `/announcements/routes` | `announcements:routes:view` |
 | `POST` | `/announcements/routes` | `announcements:routes:create` |
@@ -91,7 +92,8 @@ This uses the existing `AnnouncementSettings` fields and mobile quick-announceme
 - Audio referenced by routes or mobile settings cannot be deleted (`409`). Remove those references first.
 - `GET /announcements/audios` excludes deleted audio by default. Use `?status=archived` for Recently deleted, ordered by deletion time (newest first). Search, category and pagination work in both lists.
 - `POST /announcements/audios/:audioId/restore` restores the status held before deletion and returns the audio asset. Ready audio becomes usable again; uploading/failed audio does **not** become ready without verification. This uses the existing `announcements:audios:delete` permission; no new grants are required.
-- Deleted audio cannot be edited or completed through the upload-complete endpoint. Restore it first. There is no automatic expiry or permanent-delete action.
+- Deleted audio cannot be edited or completed through the upload-complete endpoint. Restore it first. There is no automatic expiry.
+- `DELETE /announcements/audios/:audioId/permanent` irreversibly removes an unused archived asset and its R2 object. It requires the existing delete permission. Storage failure retains the database record for retry. An unfinished upload must wait until its five-minute upload link expires before permanent deletion. No additional migration is required.
 - Apply migration `20261009120000_audio_delete_restore` before deploying the backend (`npm run prisma:deploy`). It adds `archivedFromStatus` and backfills previously archived audio: completed URL-bearing assets become ready on restore, unfinished R2 uploads remain uploading, and other incomplete assets remain failed.
 
 ### Create a route
