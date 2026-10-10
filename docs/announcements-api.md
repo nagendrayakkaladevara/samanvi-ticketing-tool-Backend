@@ -158,7 +158,19 @@ All mobile announcement endpoints require a valid mobile-driver bearer token. Ad
 | `POST` | `/mobile/users/me/pinned-routes/:routeId` | Pin a published route; idempotent |
 | `DELETE` | `/mobile/users/me/pinned-routes/:routeId` | Unpin a route; idempotent |
 
-All responses use `{ "success": true, "data": ... }` and `Cache-Control: private, no-store`. Route cards contain `id` (internal identifier used in URLs), `routeId` (display code), `startLocation`, `endLocation`, `via`, `busType` (`AC` or `Non-AC`), and `isPinned`. Announcement entries contain `id`, `title`, `audioUrl`, `sequence`, and optional media metadata. The stored route assignment position is the sequence; the mobile app does not infer or reorder it.
+All responses use `{ "success": true, "data": ... }` and `Cache-Control: private, no-store`. Route cards contain `id` (internal identifier used in URLs), `routeId` (display code), `startLocation`, `endLocation`, `via`, `busType` (`AC` or `Non-AC`), `isPinned`, and additive `version`. Announcement entries contain `id`, `title`, `audioUrl`, `sequence`, and media metadata. The stored route assignment position is the sequence; the mobile app does not infer or reorder it.
+
+### Pinned offline sync (mobile 2.1+)
+
+`POST /mobile/announcements/sync` requires a mobile bearer token and JSON `{}` or `{ "revision": "<previous 64-character SHA-256>" }`.
+
+- Returns `revision`, `unchanged`, ISO `serverTime`, and `offlineUntil` exactly 30 days later.
+- On a changed/first response (`unchanged: false`), also returns `catalog` (bootstrap shape) and `pinnedRoutes` (the complete array of route-announcement responses for this user's published pins, maximum three). Absence communicates removal/unpublishing/unpinning.
+- An unchanged response omits both manifests; authorization and database checks still run. The client throttles/deduplicates sync to reduce calls.
+- A repeatable-read transaction produces the snapshot; revisions include user identity so another driver's revision cannot reuse personalized data.
+- Playable audio includes numeric `sizeBytes`, `contentRevision`, and nullable `checksumSha256`. Content identity incorporates the immutable storage key/URL, ETag, size, MIME type and supplied checksum, excluding labels/timestamps. Metadata edits do not require media downloads.
+- Only successful sync renews offline access. Token refresh and pin mutations alone do not. Removed files/account restrictions take effect when the client learns them; a disconnected device can retain previously authorized content until its 30-day expiry.
+- Existing GET endpoints and admin publishing/upload/mapping contracts remain available. No additional Prisma migration or environment variable is required.
 
 Quick groups always include `welcome-note`, `dinner-break`, and `toilet-break`. MULTIPLE contains `audios`; SINGLE contains `audioUrl` plus an `audio` object with id/title/media metadata. Unconfigured or unavailable SINGLE audio is `null`, and an empty MULTIPLE has `audios: []`.
 

@@ -4,6 +4,7 @@ import { badRequest, notFound } from "../core/errors/http-errors";
 import { asyncHandler } from "../core/http/async-handler";
 import { prisma } from "../lib/prisma";
 import { requireMobileDriverAuth } from "../middleware/mobile-auth";
+import { getOfflineSnapshot, OFFLINE_AUDIO_DAYS, syncRevision } from "../lib/mobile-offline-sync";
 import {
   getQuickAnnouncements, listMobileRoutes, listPinnedRoutes, MAX_PINNED_ROUTES,
   mobileAudioSelect, mobileRouteSelect, playableAudio, routeCard, setRoutePinned,
@@ -17,6 +18,20 @@ function routeIdFrom(params: { routeId?: string | string[] }): string {
 const mobileAnnouncementsRouter = Router();
 mobileAnnouncementsRouter.use(requireMobileDriverAuth);
 mobileAnnouncementsRouter.use((_req, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
+
+mobileAnnouncementsRouter.post("/sync", asyncHandler(async (req, res) => {
+  const parsed = z.object({ revision: z.string().regex(/^[a-f0-9]{64}$/).optional() }).safeParse(req.body);
+  if (!parsed.success) throw badRequest("Invalid sync request", { issues: parsed.error.issues });
+  const snapshot = await getOfflineSnapshot(req.mobileDriver!.sub);
+  const revision = syncRevision(req.mobileDriver!.sub, snapshot);
+  const now = Date.now();
+  const unchanged = parsed.data.revision === revision;
+  res.json({ success: true, data: {
+    revision, unchanged, serverTime: new Date(now).toISOString(),
+    offlineUntil: new Date(now + OFFLINE_AUDIO_DAYS * 86_400_000).toISOString(),
+    ...(unchanged ? {} : snapshot),
+  } });
+}));
 
 mobileAnnouncementsRouter.get("/bootstrap", asyncHandler(async (req, res) => {
   const [routes, quickAnnouncements, settings] = await Promise.all([
@@ -60,8 +75,8 @@ mobileAnnouncementsRouter.get("/config", asyncHandler(async (_req, res) => {
   res.json({ success: true, data: { recordsDriveUrl: settings?.recordsDriveUrl ?? null } });
 }));
 
-// Resolve each play request against the backend, so removed or unpublished audio cannot
-// continue to play from stale screen data and the app always needs a live connection.
+// Online playback resolution for legacy clients, unpinned routes and quick audio.
+// New clients authorize downloaded pinned audio through the bounded /sync lease.
 mobileAnnouncementsRouter.get("/audios/:audioId", asyncHandler(async (req, res) => {
   const audioId = z.string().min(1).parse(req.params.audioId);
   const audio = await prisma.audioAsset.findFirst({

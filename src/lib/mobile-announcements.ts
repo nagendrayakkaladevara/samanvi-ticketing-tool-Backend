@@ -2,12 +2,14 @@ import { AudioAssetStatus, AudioCategory, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { notFound } from "../core/errors/http-errors";
 import { AppError } from "../core/errors/app-error";
+import { createHash } from "node:crypto";
 
 export const MAX_PINNED_ROUTES = 3;
 
 export const mobileAudioSelect = {
   id: true, title: true, mimeType: true, durationMs: true,
   downloadUrl: true, blobUrl: true, status: true, category: true,
+  storageKey: true, sizeBytes: true, etag: true, checksumSha256: true,
 } satisfies Prisma.AudioAssetSelect;
 type MobileAudio = Prisma.AudioAssetGetPayload<{ select: typeof mobileAudioSelect }>;
 
@@ -17,18 +19,23 @@ export function playableAudio(audio: MobileAudio | null | undefined) {
   try {
     if (!audioUrl || new URL(audioUrl).protocol !== "https:") return null;
   } catch { return null; }
-  return { id: audio.id, title: audio.title, audioUrl, mimeType: audio.mimeType, durationMs: audio.durationMs };
+  // Labels, route ordering and timestamps do not change the identity of media bytes.
+  const contentRevision = createHash("sha256").update(JSON.stringify([
+    audio.storageKey, audioUrl, audio.etag, String(audio.sizeBytes), audio.mimeType, audio.checksumSha256,
+  ])).digest("hex");
+  return { id: audio.id, title: audio.title, audioUrl, mimeType: audio.mimeType, durationMs: audio.durationMs,
+    sizeBytes: Number(audio.sizeBytes ?? 0), contentRevision, checksumSha256: audio.checksumSha256 ?? null };
 }
 
 export const mobileRouteSelect = {
-  id: true, routeCode: true, origin: true, destination: true, via: true, busType: true,
+  id: true, routeCode: true, origin: true, destination: true, via: true, busType: true, version: true,
 } satisfies Prisma.AnnouncementRouteSelect;
 type MobileRoute = Prisma.AnnouncementRouteGetPayload<{ select: typeof mobileRouteSelect }>;
 
 export function routeCard(route: MobileRoute, isPinned: boolean) {
   return {
     id: route.id, routeId: route.routeCode, startLocation: route.origin,
-    endLocation: route.destination, via: route.via, busType: route.busType, isPinned,
+    endLocation: route.destination, via: route.via, busType: route.busType, isPinned, version: route.version,
   };
 }
 

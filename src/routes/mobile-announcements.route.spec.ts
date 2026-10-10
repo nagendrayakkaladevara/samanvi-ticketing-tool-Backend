@@ -24,7 +24,7 @@ describe("online mobile announcements", () => {
   let server: Server;
   let base: string;
   const route = { id: "r1", routeCode: "ST-A02", origin: "Hyderabad", destination: "Amalapuram", via: "Vijayawada", busType: "AC", pinnedBy: [{ userId: "driver-a" }] };
-  const audio = { id: "a1", title: "Departure", mimeType: "audio/mpeg", durationMs: 1000, status: "ready", category: "welcome_note", downloadUrl: "https://audio.example.com/1.mp3", blobUrl: null };
+  const audio = { id: "a1", title: "Departure", mimeType: "audio/mpeg", durationMs: 1000, status: "ready", category: "welcome_note", downloadUrl: "https://audio.example.com/1.mp3", blobUrl: null, sizeBytes: 100n, etag: "immutable-1", storageKey: "one", checksumSha256: null };
   const request = (path: string, method = "GET", body?: unknown, user = "driver-a") => fetch(`${base}${path}`, { method, headers: { Authorization: `Bearer ${user}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   beforeAll(async () => {
     const app = express();
@@ -45,11 +45,12 @@ describe("online mobile announcements", () => {
     mocks.audios.findFirst.mockResolvedValue(audio);
     mocks.settings.findUnique.mockResolvedValue({ dinnerBreakAudio: { ...audio, category: "common_audio" }, toiletBreakAudio: null, recordsDriveUrl: "https://drive.google.com/drive/folders/123" });
     mocks.pins.findMany.mockResolvedValue([]);
-    mocks.transaction.mockImplementation(async (fn) => fn({ $queryRaw: vi.fn(), announcementRoute: mocks.routes, mobilePinnedRoute: mocks.pins }));
+    mocks.transaction.mockImplementation(async (fn) => fn({ $queryRaw: vi.fn(), announcementRoute: mocks.routes, mobilePinnedRoute: mocks.pins, audioAsset: mocks.audios, announcementSettings: mocks.settings }));
   });
   it("requires driver authentication", async () => {
     expect((await fetch(`${base}/mobile/bootstrap`)).status).toBe(401);
     expect((await fetch(`${base}/pins/r1`, { method: "POST" })).status).toBe(401);
+    expect((await fetch(`${base}/mobile/sync`, { method: "POST" })).status).toBe(401);
   });
   it("returns route metadata and per-driver pins without shared caching", async () => {
     const response = await request("/mobile/bootstrap");
@@ -86,6 +87,40 @@ describe("online mobile announcements", () => {
     expect(response.status).toBe(409);
     expect((await response.json()).code).toBe("PIN_LIMIT_REACHED");
     expect(mocks.pins.create).not.toHaveBeenCalled();
+  });
+  it("syncs only published pinned playlists with a 30-day lease and deduplicated unchanged response", async () => {
+    mocks.pins.findMany.mockResolvedValue([{ route: { ...route, version: 2, audios: [{ position: 3, stopLabel: "Stop label", audio }] } }]);
+    const response = await request("/mobile/sync", "POST", {});
+    expect(response.status).toBe(200);
+    const { data } = await response.json();
+    expect(data.pinnedRoutes).toHaveLength(1);
+    expect(data.pinnedRoutes[0].announcements[0]).toMatchObject({ sequence: 3, title: "Stop label", sizeBytes: 100 });
+    expect(data.pinnedRoutes[0].announcements[0].contentRevision).toMatch(/^[a-f0-9]{64}$/);
+    expect(Date.parse(data.offlineUntil) - Date.parse(data.serverTime)).toBe(30 * 86_400_000);
+    expect(mocks.pins.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: "driver-a", route: { status: "published" } }, take: 3 }));
+    const { data: same } = await (await request("/mobile/sync", "POST", { revision: data.revision })).json();
+    expect(same.unchanged).toBe(true);
+    expect(same.catalog).toBeUndefined(); expect(same.pinnedRoutes).toBeUndefined();
+    const { data: other } = await (await request("/mobile/sync", "POST", { revision: data.revision }, "driver-b")).json();
+    expect(other.unchanged).toBe(false);
+  });
+  it("metadata edits change snapshot revision without changing media identity; removals send an empty pin set", async () => {
+    const pin = { route: { ...route, audios: [{ position: 1, stopLabel: null, audio }] } };
+    mocks.pins.findMany.mockResolvedValue([pin]);
+    const { data: first } = await (await request("/mobile/sync", "POST", {})).json();
+    mocks.pins.findMany.mockResolvedValue([{ route: { ...route, audios: [{ position: 3, stopLabel: "Renamed", audio }] } }]);
+    const { data: edited } = await (await request("/mobile/sync", "POST", { revision: first.revision })).json();
+    expect(edited.revision).not.toBe(first.revision);
+    expect(edited.pinnedRoutes[0].announcements[0].contentRevision).toBe(first.pinnedRoutes[0].announcements[0].contentRevision);
+    mocks.pins.findMany.mockResolvedValue([]); mocks.routes.findMany.mockResolvedValue([]);
+    const { data: removed } = await (await request("/mobile/sync", "POST", { revision: edited.revision })).json();
+    expect(removed.unchanged).toBe(false); expect(removed.pinnedRoutes).toEqual([]); expect(removed.catalog.routes).toEqual([]);
+  });
+  it("failed snapshots cannot renew an offline lease", async () => {
+    mocks.settings.findUnique.mockRejectedValue(new Error("Database unavailable"));
+    const response = await request("/mobile/sync", "POST", {});
+    expect(response.status).toBe(500); expect((await response.json()).offlineUntil).toBeUndefined();
+    expect((await request("/mobile/sync", "POST", { revision: "bad" })).status).toBe(400);
   });
   it("pinning an existing route is idempotent at the limit", async () => {
     mocks.pins.findMany.mockResolvedValue([1, 2, 3].map((slot) => ({ routeId: `r${slot}`, slot })));
