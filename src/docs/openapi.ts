@@ -1608,6 +1608,16 @@ export function buildOpenApiSpec() {
           responses: { "200": { description: "Updated announcement settings" }, "400": { description: "Invalid mapping or non-Common audio" }, "403": { description: "Mobile settings permission required" }, "404": { description: "Audio not found" }, "409": { description: "Audio is not playable or mapping changed concurrently; retry" } },
         },
       },
+      "/mobile/announcements/sync": {
+        post: {
+          tags: ["Mobile Announcements"],
+          summary: "Synchronize the driver's pinned playlists and renew 30-day offline access",
+          description: "Returns a complete catalog/pinnedRoutes snapshot when changed. A matching user-scoped revision returns unchanged: true with fresh serverTime/offlineUntil and omits manifests. Failed requests do not renew access. Only published pins (maximum three) and ready media are included.",
+          security: [{ mobileBearerAuth: [] }],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { revision: { type: "string", pattern: "^[a-f0-9]{64}$" } } } } } },
+          responses: { "200": { description: "Revision, unchanged, serverTime and offlineUntil; catalog and pinnedRoutes included only when changed" }, "400": { description: "Invalid revision" }, "401": { description: "Driver authentication required or revoked" } },
+        },
+      },
       "/mobile/announcements/bootstrap": {
         get: {
           tags: ["Mobile Announcements"],
