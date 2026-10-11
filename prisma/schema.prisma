@@ -400,6 +400,25 @@ model MobileDriverUser {
   @@index([displayName])
 }
 
+// Snapshot fields preserve alert history when an audio or driver is removed.
+model AudioPlaybackAlert {
+  id          String   @id @default(cuid())
+  eventId     String
+  userId      String
+  username    String   @db.VarChar(50)
+  displayName String   @db.VarChar(100)
+  audioId     String
+  audioTitle  String   @db.VarChar(150)
+  playCount   Int
+  playedAt    DateTime
+  receivedAt  DateTime @default(now())
+  readAt      DateTime?
+  readById    String?
+
+  @@unique([userId, eventId])
+  @@index([readAt, playedAt(sort: Desc)])
+}
+
 model MobilePinnedRoute {
   userId    String
   user      MobileDriverUser  @relation(fields: [userId], references: [id], onDelete: Cascade)

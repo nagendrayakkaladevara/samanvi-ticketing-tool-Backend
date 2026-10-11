@@ -17,6 +17,30 @@ function routeIdFrom(params: { routeId?: string | string[] }): string {
 
 const mobileAnnouncementsRouter = Router();
 mobileAnnouncementsRouter.use(requireMobileDriverAuth);
+// Idempotent delivery allows downloaded audio to report after reconnecting.
+mobileAnnouncementsRouter.post("/playback-alerts", asyncHandler(async (req, res) => {
+  const parsed = z.object({
+    eventId: z.string().uuid(), audioId: z.string().min(1).max(100),
+    playCount: z.number().int().min(4).max(1000000), playedAt: z.iso.datetime(),
+  }).strict().safeParse(req.body);
+  if (!parsed.success) throw badRequest("Invalid playback alert", { issues: parsed.error.issues });
+  const userId = req.mobileDriver!.sub;
+  const { eventId, audioId, playCount, playedAt } = parsed.data;
+  if (new Date(playedAt).getTime() > Date.now() + 300000) throw badRequest("Playback time is in the future");
+  const existing = await prisma.audioPlaybackAlert.findUnique({ where: { userId_eventId: { userId, eventId } } });
+  if (!existing) {
+    const [user, audio] = await Promise.all([
+      prisma.mobileDriverUser.findUnique({ where: { id: userId }, select: { username: true, displayName: true } }),
+      prisma.audioAsset.findUnique({ where: { id: audioId }, select: { title: true } }),
+    ]);
+    if (!user || !audio) throw notFound("Driver or audio not found");
+    await prisma.audioPlaybackAlert.upsert({
+      where: { userId_eventId: { userId, eventId } }, update: {},
+      create: { userId, eventId, audioId, playCount, playedAt: new Date(playedAt), ...user, audioTitle: audio.title },
+    });
+  }
+  res.json({ success: true, data: { eventId } });
+}));
 mobileAnnouncementsRouter.use((_req, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
 
 mobileAnnouncementsRouter.post("/sync", asyncHandler(async (req, res) => {
